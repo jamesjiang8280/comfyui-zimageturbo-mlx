@@ -125,6 +125,37 @@ Console output while running:
 [zimage-mlx] 完成，用时 59.5s -> zimage_42_1024x1024.png
 ```
 
+## ControlNet
+
+Z-Image-Turbo has an official **Union ControlNet** — one checkpoint that accepts canny, depth,
+pose, hed or mlsd hints:
+
+```
+alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1
+└── Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps.safetensors   6.71 GB
+```
+
+Put it anywhere under `~/ComfyUI-Shared/models/MLX/` (it is found recursively) and pick it in the
+node's `controlnet_model` dropdown.
+
+### ZImage MLX ControlNet
+
+| input | notes |
+|---|---|
+| `control_image` | **already preprocessed** — a Canny edge map, depth map or OpenPose skeleton, not the photo |
+| `control_type` | `canny` / `depth` / `pose` / `hed` / `mlsd` — tells the model what the hint is |
+| `control_strength` | per-control weight, model card recommends 0.65–1.0 |
+| `controlnet_strength` | global multiplier over all controls |
+| `prompt`, `width`, `height`, `steps`, `seed` | as in the text-to-image node |
+
+It reuses the same `ZImage MLX Loader`, so a finetune works as the base too. Internally the node
+builds a composite directory (`<base>-cn/`) that links the base weights and drops the Union
+checkpoint in `controlnet/`, then calls mflux's own `ZImageTurboControlnet` with a ModelConfig that
+carries `controlnet_model` — the stock CLI refuses a local path there.
+
+Preprocessing is not bundled: use ComfyUI's `comfyui_controlnet_aux` nodes (Canny, MiDaS/Depth
+Anything, OpenPose) or any external tool, then feed the result into `control_image`.
+
 ## Performance (measured, M5 / 24 GB)
 
 | setup | time | peak MLX memory |

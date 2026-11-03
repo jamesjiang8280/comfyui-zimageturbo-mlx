@@ -128,6 +128,138 @@ def build_command(
     return cmd
 
 
+def stream_process(
+    cmd: list[str],
+    *,
+    label: str,
+    on_progress: Callable[[int, int], None] | None = None,
+    on_log: Callable[[str], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+    out_path: Path | None = None,
+) -> None:
+    """Run a command, forward its output, and turn tqdm redraws into step lines."""
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    env["PYTHONIOENCODING"] = "utf-8"
+
+    if on_log:
+        on_log("[zimage-mlx] " + " ".join(cmd))
+
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            bufsize=0, env=env)
+    tail: list[str] = []
+    pending = b""
+    last_step = -1
+    announced: set[str] = set()
+    started = time.time()
+
+    def handle(line: str) -> None:
+        nonlocal last_step
+        line = ANSI_RE.sub("", line).strip()
+        if not line:
+            return
+        tail.append(line)
+        del tail[:-40]
+        if on_log:
+            on_log(line)
+
+        m = STEP_RE.search(line)
+        if m:
+            step, total = int(m.group(1)), int(m.group(2))
+            if on_progress:
+                on_progress(step, total)
+            if step != last_step and step > 0:
+                last_step = step
+                rate = RATE_RE.search(line)
+                suffix = f"  {rate.group(1).strip()}" if rate else ""
+                pct = f" ({step * 100 // total}%)" if total else ""
+                print(f"[zimage-mlx] 采样 {step}/{total}{pct}{suffix}"
+                      f"  已用 {time.time() - started:.0f}s", flush=True)
+            return
+
+        ph = PHASE_RE.search(line)
+        if ph and ph.group(1) not in announced:
+            announced.add(ph.group(1))
+            print(f"[zimage-mlx] {line[:120]}", flush=True)
+
+    try:
+        assert proc.stdout is not None
+        while True:
+            chunk = proc.stdout.read(4096)
+            if not chunk:
+                break
+            pending += chunk
+            while True:
+                cut = min((i for i in (pending.find(b"\n"), pending.find(b"\r")) if i >= 0),
+                          default=-1)
+                if cut < 0:
+                    break
+                piece, pending = pending[:cut], pending[cut + 1:]
+                handle(piece.decode("utf-8", errors="replace"))
+            if should_cancel and should_cancel():
+                proc.kill()
+                raise ZImageRunError("已取消（ComfyUI 中断）。")
+        if pending:
+            handle(pending.decode("utf-8", errors="replace"))
+        code = proc.wait()
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+
+    if code != 0:
+        raise ZImageRunError(f"{label} 退出码 {code}。最近输出：\n" + "\n".join(tail[-15:]))
+    if out_path is not None and not out_path.is_file():
+        raise ZImageRunError(
+            f"{label} 正常退出但没有产出图片。最近输出：\n" + "\n".join(tail[-15:])
+        )
+    print(f"[zimage-mlx] 完成，用时 {time.time() - started:.1f}s"
+          + (f" -> {out_path.name}" if out_path else ""), flush=True)
+
+
+def run_controlnet(
+    *,
+    python: str,
+    model: str,
+    controlnet_ckpt: str,
+    control_image: Path,
+    control_type: str,
+    control_strength: float,
+    controlnet_strength: float,
+    prompt: str,
+    width: int = 1024,
+    height: int = 1024,
+    steps: int = 8,
+    seed: int = 42,
+    out_path: Path,
+    on_progress: Callable[[int, int], None] | None = None,
+    on_log: Callable[[str], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+) -> Path:
+    """ControlNet Union run through scripts/zimage_controlnet_run.py."""
+    script = Path(__file__).resolve().parent / "scripts" / "zimage_controlnet_run.py"
+    if not script.is_file():
+        raise ZImageRunError(f"找不到 ControlNet 驱动脚本：{script}")
+
+    print(f"[zimage-mlx] 开始生成（ControlNet {control_type}）{width}x{height} "
+          f"steps={steps} seed={seed} strength={control_strength}", flush=True)
+    cmd = [
+        python, str(script),
+        "--model", str(model),
+        "--control-type", str(control_type),
+        "--control-image", str(control_image),
+        "--control-strength", str(control_strength),
+        "--controlnet-strength", str(controlnet_strength),
+        "--prompt", prompt,
+        "--width", str(width), "--height", str(height),
+        "--steps", str(steps), "--seed", str(seed),
+        "--output", str(out_path),
+    ]
+    stream_process(cmd, label="mflux controlnet", on_progress=on_progress,
+                   on_log=on_log, should_cancel=should_cancel, out_path=out_path)
+    return out_path
+
+
 def run_generate(
     *,
     python: str,
