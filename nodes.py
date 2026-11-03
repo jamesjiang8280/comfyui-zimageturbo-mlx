@@ -248,7 +248,14 @@ def controlnet_checkpoints() -> list[str]:
                 if not sub.is_dir():
                     continue
                 for f in sorted(sub.glob("*.safetensors")):
-                    if "controlnet" in f.name.lower() and str(f) not in found:
+                    if "controlnet" not in f.name.lower():
+                        continue
+                    # dedupe by real path: composite dirs symlink the same checkpoint
+                    try:
+                        real = str(f.resolve())
+                    except OSError:
+                        continue
+                    if real not in {str(Path(x).resolve()) for x in found}:
                         found.append(str(f))
     return found
 
