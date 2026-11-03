@@ -23,7 +23,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import dataclasses
+import copy
 import sys
 from pathlib import Path
 
@@ -59,8 +59,10 @@ def main() -> int:
     from mflux.models.z_image.variants.controlnet.z_image_turbo_controlnet import ZImageTurboControlnet
 
     # Keep the Union entry (so controlnet_model is set) but load base weights from DIR.
-    cfg = dataclasses.replace(ModelConfig.z_image_turbo_controlnet_union_2_1(),
-                              model_name=str(model_dir))
+    # ModelConfig is a plain class, and the registry hands out lru_cached instances --
+    # deepcopy so we never mutate the shared entry.
+    cfg = copy.deepcopy(ModelConfig.z_image_turbo_controlnet_union_2_1())
+    cfg.model_name = str(model_dir)
     print(f"[cn] base={model_dir}  controlnet={cfg.controlnet_model}  "
           f"type={args.control_type} strength={args.control_strength}", flush=True)
 

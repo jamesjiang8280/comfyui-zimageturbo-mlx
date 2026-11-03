@@ -82,6 +82,22 @@ def _as_int(value: Any, default: int, lo: int, hi: int, name: str) -> int:
     return iv
 
 
+def _as_float(value: Any, default: float, lo: float, hi: float, name: str) -> float:
+    try:
+        fv = float(value)
+    except (TypeError, ValueError):
+        _fix(name, f"invalid {value!r} -> {default}")
+        return default
+    if fv != fv:  # NaN
+        _fix(name, "NaN -> default")
+        return default
+    if fv < lo or fv > hi:
+        clamped = max(lo, min(hi, fv))
+        _fix(name, f"{fv} 超出 [{lo},{hi}] -> {clamped}")
+        fv = clamped
+    return fv
+
+
 def _as_str(value: Any, default: str, name: str, allow_numbers: bool = False) -> str:
     if isinstance(value, str):
         return value
