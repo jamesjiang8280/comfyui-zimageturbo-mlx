@@ -60,6 +60,13 @@ def find_python() -> str:
     parents = {here.parent.parent, here.resolve().parent.parent}
     for parent in parents:
         candidates.append(str(parent / "comfyui-qwen21-mlx" / ".venv" / "bin" / "python"))
+
+    # Dedicated mflux venvs: the usual answer when ComfyUI's own env has to stay
+    # clean (mflux pins its own transformers/mlx; ComfyUI pins different ones).
+    home = Path.home()
+    for venv in (home / "mflux-venv", home / "ComfyUI-Shared" / "mflux-venv"):
+        candidates.append(str(venv / "bin" / "python"))
+
     candidates.append(sys.executable)
 
     seen: set[str] = set()
