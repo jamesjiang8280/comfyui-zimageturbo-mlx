@@ -156,6 +156,16 @@ carries `controlnet_model` — the stock CLI refuses a local path there.
 Preprocessing is not bundled: use ComfyUI's `comfyui_controlnet_aux` nodes (Canny, MiDaS/Depth
 Anything, OpenPose) or any external tool, then feed the result into `control_image`.
 
+Measured with this node (Canny hint, base = a 4-bit finetune):
+
+| hint | output |
+|---|---|
+| ![hint](samples/sample_controlnet_canny_hint.png) | ![out](samples/sample_controlnet_canny_768.png) |
+
+Structure follows the hint (tower position, building on the right, rock shelf); colours and detail
+come from the prompt. 4 steps is enough to see the layout but leaves colour artifacts — 8 is the
+sane default.
+
 ## Performance (measured, M5 / 24 GB)
 
 | setup | time | peak MLX memory |
@@ -164,6 +174,8 @@ Anything, OpenPose) or any external tool, then feed the result into `control_ima
 | 512² / 4 steps, 4-bit on disk | 12 s | ~4.4 GB |
 | 768² / 8 steps, 4-bit | 34 s | 4.41 GB |
 | 1024² / 8 steps, 4-bit | 60 s | 4.34 GB |
+| ControlNet canny, 512² / 4 steps | 22 s | — |
+| ControlNet canny, 768² / 8 steps | 72 s | — |
 
 The first row is the important one: on 24 GB, loading 12.3 GB of bf16 DiT plus an 8 GB text encoder
 thrashes. **Quantize to disk once** and everything is fine:
