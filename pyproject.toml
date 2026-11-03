@@ -1,0 +1,14 @@
+[project]
+name = "comfyui-zimageturbo-mlx"
+version = "0.1.0"
+description = "ComfyUI nodes to run Z-Image-Turbo on Apple Silicon via MLX (mflux backend)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "jamesjiang8280" }]
+keywords = ["comfyui", "comfyui-nodes", "z-image", "mlx", "apple-silicon", "mflux"]
+
+[tool.comfy]
+PublisherId = ""
+DisplayName = "Z-Image-Turbo MLX"
+Icon = ""
