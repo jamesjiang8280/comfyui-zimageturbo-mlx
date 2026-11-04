@@ -44,6 +44,8 @@ def main() -> int:
     ap.add_argument("--steps", type=int, default=8)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--scheduler", default="linear")
+    ap.add_argument("--preprocessed", action="store_true",
+                    help="control image already went through _preprocess(); don't redo it")
     ap.add_argument("--output", required=True)
     args = ap.parse_args()
 
@@ -56,7 +58,15 @@ def main() -> int:
 
     from mflux.models.common.config.model_config import ModelConfig
     from mflux.models.z_image.variants.controlnet.control_types import ControlSpec, ControlType
+    from mflux.models.z_image.variants.controlnet.controlnet_util import ZImageControlnetUtil
     from mflux.models.z_image.variants.controlnet.z_image_turbo_controlnet import ZImageTurboControlnet
+
+    if args.preprocessed:
+        # The ComfyUI node already rendered the hint with this exact function, so
+        # running it again would double-process (canny of a canny, pose of a
+        # skeleton) and quietly wreck the signal.
+        ZImageControlnetUtil._preprocess = staticmethod(lambda img, _t: img)
+        print("[cn] hint already preprocessed; internal _preprocess disabled", flush=True)
 
     # Keep the Union entry (so controlnet_model is set) but load base weights from DIR.
     # ModelConfig is a plain class, and the registry hands out lru_cached instances --

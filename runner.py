@@ -227,6 +227,7 @@ def run_controlnet(
     control_strength: float,
     controlnet_strength: float,
     prompt: str,
+    preprocessed: bool = False,
     width: int = 1024,
     height: int = 1024,
     steps: int = 8,
@@ -255,8 +256,34 @@ def run_controlnet(
         "--steps", str(steps), "--seed", str(seed),
         "--output", str(out_path),
     ]
+    if preprocessed:
+        cmd.append("--preprocessed")
     stream_process(cmd, label="mflux controlnet", on_progress=on_progress,
                    on_log=on_log, should_cancel=should_cancel, out_path=out_path)
+    return out_path
+
+
+def render_control_hint(
+    *,
+    python: str,
+    image: Path,
+    control_type: str,
+    out_path: Path,
+) -> Path:
+    """Render the hint mflux would use (canny/depth/pose/hed/mlsd) as a PNG."""
+    script = Path(__file__).resolve().parent / "scripts" / "zimage_control_hint.py"
+    if not script.is_file():
+        raise ZImageRunError(f"找不到 hint 脚本：{script}")
+    cmd = [python, str(script), "--image", str(image),
+           "--type", str(control_type), "--output", str(out_path)]
+    env = os.environ.copy()
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    if proc.returncode != 0 or not out_path.is_file():
+        detail = (proc.stdout or "") + (proc.stderr or "")
+        raise ZImageRunError(
+            f"生成 {control_type} 控制图失败（退出码 {proc.returncode}）：\n" + detail[-800:]
+        )
     return out_path
 
 

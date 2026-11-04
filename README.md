@@ -154,6 +154,19 @@ LoadImage (source photo) ─▶ ZImage MLX ControlNet ─▶ ZImage MLX Sampler 
 | `controlnet_strength` | global multiplier |
 | `controlnet_model` | dropdown over the Union checkpoints found on disk |
 
+**Outputs**
+
+| output | contents |
+|---|---|
+| `control` | the bundle the Sampler consumes (`ZIMAGE_MLX_CN`) |
+| `control_image_preview` | the **preprocessed** hint as an `IMAGE` — wire it to `PreviewImage` to see the canny/depth/pose/hed/mlsd map the model actually received |
+
+The hint is rendered once, in the node, by the same mflux function the sampler used to run
+invisibly (`ZImageControlnetUtil._preprocess`). The Sampler then passes `--preprocessed`, so the
+signal is not processed twice:
+
+![hint output](samples/sample_controlnet_hint_output.png)
+
 ⚠️ **Feed the raw photo, not a preprocessed hint.** In mflux `control_type` is not a label: before
 encoding it runs the matching preprocessor itself (`canny`→OpenCV Canny, `depth`→DepthPro,
 `pose`→OpenPose, `hed`→HED, `mlsd`→OpenCV LSD). Handing it a skeleton it will happily try to detect

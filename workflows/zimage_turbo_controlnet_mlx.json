@@ -1,16 +1,16 @@
 {
-  "last_node_id": 6,
-  "last_link_id": 4,
+  "last_node_id": 7,
+  "last_link_id": 5,
   "nodes": [
     {
       "id": 1,
       "type": "ZImage MLX Loader",
       "pos": [
-        40,
+        30,
         80
       ],
       "size": [
-        420,
+        400,
         250
       ],
       "flags": {},
@@ -42,7 +42,7 @@
       "id": 2,
       "type": "LoadImage",
       "pos": [
-        40,
+        30,
         380
       ],
       "size": [
@@ -85,7 +85,7 @@
       ],
       "size": [
         400,
-        220
+        200
       ],
       "flags": {},
       "order": 2,
@@ -104,6 +104,13 @@
           "links": [
             3
           ]
+        },
+        {
+          "name": "control_image_preview",
+          "type": "IMAGE",
+          "links": [
+            5
+          ]
         }
       ],
       "properties": {
@@ -120,11 +127,11 @@
       "id": 4,
       "type": "ZImage MLX Sampler",
       "pos": [
-        940,
+        960,
         80
       ],
       "size": [
-        420,
+        400,
         240
       ],
       "flags": {},
@@ -170,7 +177,7 @@
         80
       ],
       "size": [
-        340,
+        320,
         320
       ],
       "flags": {},
@@ -193,17 +200,45 @@
     },
     {
       "id": 6,
-      "type": "Note",
+      "type": "PreviewImage",
       "pos": [
-        40,
-        740
+        960,
+        380
       ],
       "size": [
-        420,
-        190
+        320,
+        300
       ],
       "flags": {},
       "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 5
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": [],
+      "title": "预处理后的控制图"
+    },
+    {
+      "id": 7,
+      "type": "Note",
+      "pos": [
+        30,
+        740
+      ],
+      "size": [
+        440,
+        190
+      ],
+      "flags": {},
+      "order": 6,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -211,7 +246,7 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "ControlNet 节点喂【原图】，不要预先做 canny/骨架——\nmflux 会按 control_type 自己预处理。\n\ncontrolnet_model 请在节点下拉里选（首次需下载 6.71GB Union 权重）"
+        "ControlNet 喂【原图】，mflux 会按 control_type 自己预处理\n第二个输出 = 预处理结果，接 PreviewImage 可直接看\n\ncontrolnet_model 在节点下拉里选（首次需下 6.71GB Union 权重）"
       ]
     }
   ],
@@ -245,6 +280,14 @@
       4,
       0,
       5,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      3,
+      1,
+      6,
       0,
       "IMAGE"
     ]

@@ -38,7 +38,8 @@ import numpy as np
 import torch
 from PIL import Image
 
-from .runner import ZImageRunError, find_python, run_controlnet, run_generate
+from .runner import (ZImageRunError, find_python, render_control_hint,
+                     run_controlnet, run_generate)
 
 try:  # optional: progress bar + interruption, only available inside ComfyUI
     import comfy.model_management as comfy_mm
@@ -587,6 +588,7 @@ class ZImageMlxSampler:
                     control_strength=float(control["strength"]),
                     controlnet_strength=float(control["net_strength"]),
                     prompt=prompt,
+                    preprocessed=bool(control.get("preprocessed")),
                     width=width,
                     height=height,
                     steps=steps,
@@ -659,8 +661,8 @@ class ZImageMlxControlNet:
             },
         }
 
-    RETURN_TYPES = ("ZIMAGE_MLX_CN",)
-    RETURN_NAMES = ("control",)
+    RETURN_TYPES = ("ZIMAGE_MLX_CN", "IMAGE")
+    RETURN_NAMES = ("control", "control_image_preview")
     FUNCTION = "prepare"
     CATEGORY = "ZImage MLX"
 
@@ -671,7 +673,7 @@ class ZImageMlxControlNet:
         control_strength: float,
         controlnet_strength: float,
         controlnet_model: str = "",
-    ) -> tuple[dict[str, Any]]:
+    ) -> tuple[dict[str, Any], torch.Tensor]:
         control_strength = _as_float(control_strength, 0.8, 0.0, 1.5, "control_strength")
         controlnet_strength = _as_float(controlnet_strength, 1.0, 0.0, 2.0, "controlnet_strength")
         if control_type not in CONTROL_TYPES:
@@ -692,19 +694,34 @@ class ZImageMlxControlNet:
         if control_image is None:
             raise ZImageRunError("control_image 为空：需要一张预处理过的控制图。")
 
+        python = find_python()
+        with tempfile.TemporaryDirectory(prefix="zimage_hint_") as tmp:
+            tmp_dir = Path(tmp)
+            src = tmp_dir / "source.png"
+            _tensor_to_pil(control_image).save(src)
+            hint_path = tmp_dir / "hint.png"
+            render_control_hint(python=python, image=src,
+                                control_type=control_type, out_path=hint_path)
+            hint = Image.open(hint_path)
+            hint.load()
+            hint_tensor = _pil_to_tensor(hint)
+
         print(
             f"[ZImage-MLX] ControlNet 就绪：{control_type} "
-            f"strength={control_strength} × {controlnet_strength} | {ckpt.name}",
+            f"strength={control_strength} × {controlnet_strength} | {ckpt.name} "
+            f"| hint {hint.size[0]}x{hint.size[1]}",
             flush=True,
         )
         return (
             {
-                "image": control_image,
+                "image": hint_tensor,      # 已预处理，采样时不再处理
                 "type": control_type,
                 "strength": control_strength,
                 "net_strength": controlnet_strength,
                 "ckpt": str(ckpt),
+                "preprocessed": True,
             },
+            hint_tensor,
         )
 
 
