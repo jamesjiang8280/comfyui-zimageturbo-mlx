@@ -127,44 +127,64 @@ Console output while running:
 
 ## ControlNet
 
-Z-Image-Turbo has an official **Union ControlNet** — one checkpoint that accepts canny, depth,
-pose, hed or mlsd hints:
+Z-Image-Turbo has an official **Union ControlNet** — one checkpoint that accepts five hint types:
 
 ```
 alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1
 └── Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps.safetensors   6.71 GB
 ```
 
-Put it anywhere under `~/ComfyUI-Shared/models/MLX/` (it is found recursively) and pick it in the
-node's `controlnet_model` dropdown.
+Drop it anywhere under `~/ComfyUI-Shared/models/MLX/` (scanned recursively) and pick it in the
+`controlnet_model` dropdown.
+
+The graph is split the way ComfyUI users expect — a ControlNet node and a Sampler node:
+
+```
+ZImage MLX Loader ─────────────────────────────┐
+LoadImage (source photo) ─▶ ZImage MLX ControlNet ─▶ ZImage MLX Sampler ─▶ SaveImage
+```
 
 ### ZImage MLX ControlNet
 
 | input | notes |
 |---|---|
-| `control_image` | **already preprocessed** — a Canny edge map, depth map or OpenPose skeleton, not the photo |
-| `control_type` | `canny` / `depth` / `pose` / `hed` / `mlsd` — tells the model what the hint is |
+| `control_image` | **the original photo** — see below |
+| `control_type` | `canny` / `depth` / `pose` / `hed` / `mlsd` |
 | `control_strength` | per-control weight, model card recommends 0.65–1.0 |
-| `controlnet_strength` | global multiplier over all controls |
-| `prompt`, `width`, `height`, `steps`, `seed` | as in the text-to-image node |
+| `controlnet_strength` | global multiplier |
+| `controlnet_model` | dropdown over the Union checkpoints found on disk |
 
-It reuses the same `ZImage MLX Loader`, so a finetune works as the base too. Internally the node
-builds a composite directory (`<base>-cn/`) that links the base weights and drops the Union
-checkpoint in `controlnet/`, then calls mflux's own `ZImageTurboControlnet` with a ModelConfig that
-carries `controlnet_model` — the stock CLI refuses a local path there.
+⚠️ **Feed the raw photo, not a preprocessed hint.** In mflux `control_type` is not a label: before
+encoding it runs the matching preprocessor itself (`canny`→OpenCV Canny, `depth`→DepthPro,
+`pose`→OpenPose, `hed`→HED, `mlsd`→OpenCV LSD). Handing it a skeleton it will happily try to detect
+a person *inside the skeleton* and produce mush. Because of that you also do **not** need
+`comfyui_controlnet_aux` in the graph.
 
-Preprocessing is not bundled: use ComfyUI's `comfyui_controlnet_aux` nodes (Canny, MiDaS/Depth
-Anything, OpenPose) or any external tool, then feed the result into `control_image`.
+### ZImage MLX Sampler
 
-Measured with this node (Canny hint, base = a 4-bit finetune):
+Takes the optional `control` output. Without it the node is a plain text-to-image sampler, so one
+sampler serves both workflows.
 
-| hint | output |
-|---|---|
-| ![hint](samples/sample_controlnet_canny_hint.png) | ![out](samples/sample_controlnet_canny_768.png) |
+| input | default | notes |
+|---|---|---|
+| `prompt` | — | |
+| `width` / `height` | 1024 | multiple of 32, 256–1536 |
+| `steps` | 8 | 8–9 is the distilled design point |
+| `seed` | 42 | |
+| `control` (optional) | — | output of `ZImage MLX ControlNet` |
 
-Structure follows the hint (tower position, building on the right, rock shelf); colours and detail
-come from the prompt. 4 steps is enough to see the layout but leaves colour artifacts — 8 is the
-sane default.
+### Verified hint types
+
+Same source photo, four control types, 512² / 8 steps, 4-bit finetune as base:
+
+![control types](samples/sample_controlnet_types.png)
+
+All four follow the subject's pose and framing while changing material/background per the prompt.
+`hed` uses the same native-MLX HED port (weights from `lllyasviel/Annotators`) but was not exercised
+in this test run.
+
+Timing: 512²/4 steps ≈ 25 s, 512²/8 ≈ 42 s, 768²/8 ≈ 72 s (control runs are slower than plain
+text-to-image because the hint is VAE-encoded every call).
 
 ## Performance (measured, M5 / 24 GB)
 

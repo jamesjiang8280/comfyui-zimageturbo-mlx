@@ -1,5 +1,5 @@
 {
-  "last_node_id": 5,
+  "last_node_id": 6,
   "last_link_id": 4,
   "nodes": [
     {
@@ -74,21 +74,61 @@
         "example.png",
         "image"
       ],
-      "title": "控制图（已预处理）"
+      "title": "控制源图（原图）"
     },
     {
       "id": 3,
       "type": "ZImage MLX ControlNet",
       "pos": [
-        520,
-        80
+        500,
+        380
       ],
       "size": [
-        440,
-        320
+        400,
+        220
       ],
       "flags": {},
       "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "control_image",
+          "type": "IMAGE",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "control",
+          "type": "ZIMAGE_MLX_CN",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZImage MLX ControlNet"
+      },
+      "widgets_values": [
+        "pose",
+        0.8,
+        1.0,
+        ""
+      ]
+    },
+    {
+      "id": 4,
+      "type": "ZImage MLX Sampler",
+      "pos": [
+        940,
+        80
+      ],
+      "size": [
+        420,
+        240
+      ],
+      "flags": {},
+      "order": 3,
       "mode": 0,
       "inputs": [
         {
@@ -97,9 +137,9 @@
           "link": 1
         },
         {
-          "name": "control_image",
-          "type": "IMAGE",
-          "link": 2
+          "name": "control",
+          "type": "ZIMAGE_MLX_CN",
+          "link": 3
         }
       ],
       "outputs": [
@@ -112,25 +152,21 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "ZImage MLX ControlNet"
+        "Node name for S&R": "ZImage MLX Sampler"
       },
       "widgets_values": [
-        "canny",
-        "a modern two-storey house by the sea at golden hour, photorealistic",
+        "full body portrait of a young woman standing, white dress, seaside, photorealistic",
         1024,
         1024,
         8,
-        42,
-        0.8,
-        1.0,
-        ""
+        42
       ]
     },
     {
-      "id": 4,
+      "id": 5,
       "type": "SaveImage",
       "pos": [
-        1000,
+        1400,
         80
       ],
       "size": [
@@ -138,7 +174,7 @@
         320
       ],
       "flags": {},
-      "order": 3,
+      "order": 4,
       "mode": 0,
       "inputs": [
         {
@@ -156,7 +192,7 @@
       ]
     },
     {
-      "id": 5,
+      "id": 6,
       "type": "Note",
       "pos": [
         40,
@@ -164,10 +200,10 @@
       ],
       "size": [
         420,
-        220
+        190
       ],
       "flags": {},
-      "order": 4,
+      "order": 5,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -175,7 +211,7 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "control_image 必须是【预处理后】的控制图：\n• canny  → Canny 边缘图\n• depth  → 深度图（灰阶）\n• pose   → OpenPose 骨架图（彩色骨骼）\n• hed / mlsd → 软边缘 / 直线检测\n\n强度：control_strength 0.65-1.0（模型卡推荐）\n提高 controlnet_strength 会让控制更硬，但画质可能变僵\n\ncontrolnet_model：在节点下拉里选择（首次需先下载权重）"
+        "ControlNet 节点喂【原图】，不要预先做 canny/骨架——\nmflux 会按 control_type 自己预处理。\n\ncontrolnet_model 请在节点下拉里选（首次需下载 6.71GB Union 权重）"
       ]
     }
   ],
@@ -184,7 +220,7 @@
       1,
       1,
       0,
-      3,
+      4,
       0,
       "ZIMAGE_MLX_CONFIG"
     ],
@@ -193,14 +229,22 @@
       2,
       0,
       3,
-      1,
+      0,
       "IMAGE"
     ],
     [
-      4,
+      3,
       3,
       0,
       4,
+      1,
+      "ZIMAGE_MLX_CN"
+    ],
+    [
+      4,
+      4,
+      0,
+      5,
       0,
       "IMAGE"
     ]
@@ -209,7 +253,7 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.85,
+      "scale": 0.8,
       "offset": [
         0,
         0

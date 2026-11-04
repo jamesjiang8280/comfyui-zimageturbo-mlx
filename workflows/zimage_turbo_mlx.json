@@ -7,11 +7,11 @@
       "type": "ZImage MLX Loader",
       "pos": [
         40,
-        120
+        100
       ],
       "size": [
-        440,
-        240
+        420,
+        250
       ],
       "flags": {},
       "order": 0,
@@ -33,21 +33,21 @@
         "Tongyi-MAI/Z-Image-Turbo",
         "4",
         true,
-        true,
-        8,
+        false,
+        0,
         false
       ]
     },
     {
       "id": 2,
-      "type": "ZImage MLX Text to Image",
+      "type": "ZImage MLX Sampler",
       "pos": [
-        520,
-        120
+        500,
+        100
       ],
       "size": [
         420,
-        210
+        220
       ],
       "flags": {},
       "order": 1,
@@ -69,10 +69,10 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "ZImage MLX Text to Image"
+        "Node name for S&R": "ZImage MLX Sampler"
       },
       "widgets_values": [
-        "a young woman in a red hanfu, standing under cherry blossoms, soft afternoon light, cinematic, highly detailed",
+        "full body portrait of a young woman standing, white dress, seaside, photorealistic",
         1024,
         1024,
         8,
@@ -83,12 +83,12 @@
       "id": 3,
       "type": "SaveImage",
       "pos": [
-        980,
-        120
+        960,
+        100
       ],
       "size": [
-        320,
-        300
+        340,
+        320
       ],
       "flags": {},
       "order": 2,
@@ -105,7 +105,7 @@
         "Node name for S&R": "SaveImage"
       },
       "widgets_values": [
-        "zimage-turbo-mlx"
+        "zimage-mlx"
       ]
     },
     {
@@ -113,11 +113,11 @@
       "type": "Note",
       "pos": [
         40,
-        400
+        390
       ],
       "size": [
-        440,
-        230
+        420,
+        180
       ],
       "flags": {},
       "order": 3,
@@ -128,7 +128,7 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "模型下拉里：\n• MLX 目录 = 已转换好，直接跑\n• unet/*.safetensors = 首次自动转换+量化（约 15 分钟，一次性）\n\n实测：1024²/8步 ≈ 60 s，峰值 4.3 GB（M5 24GB）\n无 guidance / 无负面提示词（Turbo 蒸馏模型）"
+        "模型下拉：MLX 目录 = 已就绪；unet/*.safetensors = 首次自动转换+量化\n无 guidance / 无负面提示词（Turbo 蒸馏模型）\n1024²/8步 实测 ≈ 60 s（M5 24GB，4bit）"
       ]
     }
   ],

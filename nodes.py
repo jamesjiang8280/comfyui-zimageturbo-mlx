@@ -482,8 +482,13 @@ class ZImageMlxLoader:
         )
 
 
-class ZImageMlxTextToImage:
-    """Z-Image-Turbo text-to-image through mflux (MLX)."""
+class ZImageMlxSampler:
+    """采样器：文生图，或接 ControlNet 节点输出的控制信息。
+
+    输入 control（可选）为空时走普通 t2i；有值则把控制图 + 类型 + 强度交给
+    mflux 的 Union ControlNet 路径。两条路共用同一套加载/解析代码，所以
+    prompt/尺寸/步数/种子的行为完全一致。
+    """
 
     @classmethod
     def INPUT_TYPES(cls) -> dict[str, Any]:
@@ -498,18 +503,24 @@ class ZImageMlxTextToImage:
                 "height": ("INT", {"default": 1024, "min": 256, "max": 1536, "step": 32}),
                 "steps": (
                     "INT",
-                    {"default": 9, "min": 1, "max": 50, "step": 1, "tooltip": "蒸馏模型，8-9 步即可；更高基本只增加耗时"},
+                    {"default": 8, "min": 1, "max": 50, "step": 1, "tooltip": "蒸馏模型，8-9 步即可"},
                 ),
                 "seed": ("INT", {"default": 42, "min": 0, "max": 2**31 - 1, "step": 1}),
+            },
+            "optional": {
+                "control": (
+                    "ZIMAGE_MLX_CN",
+                    {"tooltip": "接 Z-Image-Turbo MLX ControlNet 的输出；不接就是普通文生图"},
+                ),
             },
         }
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
-    FUNCTION = "generate"
+    FUNCTION = "sample"
     CATEGORY = "ZImage MLX"
 
-    def generate(
+    def sample(
         self,
         zimage_mlx_model: dict[str, Any],
         prompt: str,
@@ -517,16 +528,19 @@ class ZImageMlxTextToImage:
         height: int,
         steps: int,
         seed: int,
+        control: dict[str, Any] | None = None,
     ):
         prompt = _as_str(prompt, "", "prompt", allow_numbers=True)
         width = _snap32(_as_int(width, 1024, 256, 1536, "width"), "width")
         height = _snap32(_as_int(height, 1024, 256, 1536, "height"), "height")
-        steps = _as_int(steps, 9, 1, 50, "steps")
+        steps = _as_int(steps, 8, 1, 50, "steps")
         seed = _as_int(seed, 42, 0, 2**31 - 1, "seed")
         _report_fixes()
 
         if not prompt.strip():
             raise ZImageRunError("prompt 为空：Z-Image-Turbo 需要提示词。")
+        if width * height > 1536 * 1536:
+            raise ZImageRunError(f"{width}x{height} 超出面积上限 1536²，请降分辨率。")
 
         bar = None
         if comfy_utils is not None:
@@ -557,50 +571,75 @@ class ZImageMlxTextToImage:
                 print(line, flush=True)
 
         with tempfile.TemporaryDirectory(prefix="zimage_mlx_") as tmp:
-            out_path = Path(tmp) / f"zimage_{seed}_{width}x{height}.png"
-            run_generate(
-                python=zimage_mlx_model["python"],
-                model=zimage_mlx_model["model"],
-                prompt=prompt,
-                width=width,
-                height=height,
-                steps=steps,
-                seed=seed,
-                quantize=zimage_mlx_model.get("quantization", "4"),
-                out_path=out_path,
-                low_ram=bool(zimage_mlx_model.get("low_ram")),
-                cache_limit_gb=int(zimage_mlx_model.get("cache_limit_gb") or 0),
-                on_progress=on_progress,
-                on_log=on_log,
-                should_cancel=should_cancel,
-            )
+            tmp_dir = Path(tmp)
+            out_path = tmp_dir / f"zimage_{seed}_{width}x{height}.png"
+
+            if control:
+                hint = tmp_dir / "control.png"
+                _tensor_to_pil(control["image"]).save(hint)
+                comp = ensure_composite(Path(zimage_mlx_model["model"]), Path(control["ckpt"]))
+                run_controlnet(
+                    python=zimage_mlx_model["python"],
+                    model=str(comp),
+                    controlnet_ckpt=str(control["ckpt"]),
+                    control_image=hint,
+                    control_type=control["type"],
+                    control_strength=float(control["strength"]),
+                    controlnet_strength=float(control["net_strength"]),
+                    prompt=prompt,
+                    width=width,
+                    height=height,
+                    steps=steps,
+                    seed=seed,
+                    out_path=out_path,
+                    on_progress=on_progress,
+                    on_log=on_log,
+                    should_cancel=should_cancel,
+                )
+            else:
+                run_generate(
+                    python=zimage_mlx_model["python"],
+                    model=zimage_mlx_model["model"],
+                    prompt=prompt,
+                    width=width,
+                    height=height,
+                    steps=steps,
+                    seed=seed,
+                    quantize=zimage_mlx_model.get("quantization", "4"),
+                    out_path=out_path,
+                    low_ram=bool(zimage_mlx_model.get("low_ram")),
+                    cache_limit_gb=int(zimage_mlx_model.get("cache_limit_gb") or 0),
+                    on_progress=on_progress,
+                    on_log=on_log,
+                    should_cancel=should_cancel,
+                )
+
             image = Image.open(out_path)
             image.load()
             return (_pil_to_tensor(image),)
 
 
 class ZImageMlxControlNet:
-    """Z-Image-Turbo + ControlNet Union (canny / depth / pose / hed / mlsd)."""
+    """ControlNet 节点：打包控制信号（图像 + 类型 + 强度），不生成图。
+
+    重要：**喂原图**。mflux 的 control_type 不只是标签 —— 它会在编码前按类型自己
+    做预处理（canny→cv2.Canny、depth→DepthPro、pose→OpenPose、hed→HED、mlsd→LSD）。
+    喂已经处理过的骨架图会让 OpenPose 再去检测火柴人，结果是噪声。
+    """
 
     @classmethod
     def INPUT_TYPES(cls) -> dict[str, Any]:
         ckpts = controlnet_checkpoints()
         return {
             "required": {
-                "zimage_mlx_model": ("ZIMAGE_MLX_CONFIG",),
                 "control_image": (
                     "IMAGE",
-                    {"tooltip": "预处理好的控制图（Canny/Depth/OpenPose 的输出），不是原图"},
+                    {"tooltip": "原图即可：mflux 会按 control_type 自己算 canny/depth/pose/hed/mlsd"},
                 ),
                 "control_type": (
                     CONTROL_TYPES,
                     {"default": "canny", "tooltip": "告诉模型这是哪一类控制信号"},
                 ),
-                "prompt": ("STRING", {"default": "", "multiline": True}),
-                "width": ("INT", {"default": 1024, "min": 256, "max": 1536, "step": 32}),
-                "height": ("INT", {"default": 1024, "min": 256, "max": 1536, "step": 32}),
-                "steps": ("INT", {"default": 8, "min": 1, "max": 50, "step": 1}),
-                "seed": ("INT", {"default": 42, "min": 0, "max": 2**31 - 1, "step": 1}),
                 "control_strength": (
                     "FLOAT",
                     {"default": 0.8, "min": 0.0, "max": 1.5, "step": 0.05,
@@ -620,30 +659,19 @@ class ZImageMlxControlNet:
             },
         }
 
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("image",)
-    FUNCTION = "generate"
+    RETURN_TYPES = ("ZIMAGE_MLX_CN",)
+    RETURN_NAMES = ("control",)
+    FUNCTION = "prepare"
     CATEGORY = "ZImage MLX"
 
-    def generate(
+    def prepare(
         self,
-        zimage_mlx_model: dict[str, Any],
         control_image: torch.Tensor,
         control_type: str,
-        prompt: str,
-        width: int,
-        height: int,
-        steps: int,
-        seed: int,
         control_strength: float,
         controlnet_strength: float,
         controlnet_model: str = "",
-    ):
-        prompt = _as_str(prompt, "", "prompt", allow_numbers=True)
-        width = _snap32(_as_int(width, 1024, 256, 1536, "width"), "width")
-        height = _snap32(_as_int(height, 1024, 256, 1536, "height"), "height")
-        steps = _as_int(steps, 8, 1, 50, "steps")
-        seed = _as_int(seed, 42, 0, 2**31 - 1, "seed")
+    ) -> tuple[dict[str, Any]]:
         control_strength = _as_float(control_strength, 0.8, 0.0, 1.5, "control_strength")
         controlnet_strength = _as_float(controlnet_strength, 1.0, 0.0, 2.0, "controlnet_strength")
         if control_type not in CONTROL_TYPES:
@@ -661,77 +689,34 @@ class ZImageMlxControlNet:
                 f"放到 {mlx_root()} 下任意目录（会递归扫描）。"
                 + (f"\n当前可用：{avail[:3]}" if avail else "")
             )
-
-        base_dir = Path(zimage_mlx_model["model"])
         if control_image is None:
             raise ZImageRunError("control_image 为空：需要一张预处理过的控制图。")
 
-        bar = None
-        if comfy_utils is not None:
-            try:
-                bar = comfy_utils.ProgressBar(steps)
-            except Exception:
-                bar = None
-
-        def on_progress(step: int, total: int) -> None:
-            if bar is not None:
-                try:
-                    bar.update_absolute(min(step, total), total)
-                except Exception:
-                    pass
-
-        def should_cancel() -> bool:
-            if comfy_mm is None:
-                return False
-            try:
-                return bool(comfy_mm.processing_interrupted())
-            except Exception:
-                return False
-
-        verbose = bool(zimage_mlx_model.get("verbose"))
-
-        def on_log(line: str) -> None:
-            if verbose or line.startswith("[zimage-mlx]"):
-                print(line, flush=True)
-
-        with tempfile.TemporaryDirectory(prefix="zimage_cn_") as tmp:
-            tmp_dir = Path(tmp)
-            hint = tmp_dir / "control.png"
-            _tensor_to_pil(control_image).save(hint)
-            comp = ensure_composite(base_dir, ckpt)
-            out_path = tmp_dir / f"cn_{seed}_{width}x{height}.png"
-            run_controlnet(
-                python=zimage_mlx_model["python"],
-                model=str(comp),
-                controlnet_ckpt=str(ckpt),
-                control_image=hint,
-                control_type=control_type,
-                control_strength=control_strength,
-                controlnet_strength=controlnet_strength,
-                prompt=prompt,
-                width=width,
-                height=height,
-                steps=steps,
-                seed=seed,
-                out_path=out_path,
-                on_progress=on_progress,
-                on_log=on_log,
-                should_cancel=should_cancel,
-            )
-            image = Image.open(out_path)
-            image.load()
-            return (_pil_to_tensor(image),)
+        print(
+            f"[ZImage-MLX] ControlNet 就绪：{control_type} "
+            f"strength={control_strength} × {controlnet_strength} | {ckpt.name}",
+            flush=True,
+        )
+        return (
+            {
+                "image": control_image,
+                "type": control_type,
+                "strength": control_strength,
+                "net_strength": controlnet_strength,
+                "ckpt": str(ckpt),
+            },
+        )
 
 
 NODE_CLASS_MAPPINGS = {
     "ZImage MLX Loader": ZImageMlxLoader,
-    "ZImage MLX Text to Image": ZImageMlxTextToImage,
+    "ZImage MLX Sampler": ZImageMlxSampler,
     "ZImage MLX ControlNet": ZImageMlxControlNet,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "ZImage MLX Loader": "Z-Image-Turbo MLX 模型配置",
-    "ZImage MLX Text to Image": "Z-Image-Turbo MLX 文生图",
+    "ZImage MLX Sampler": "Z-Image-Turbo MLX 采样器",
     "ZImage MLX ControlNet": "Z-Image-Turbo MLX ControlNet",
 }
 
