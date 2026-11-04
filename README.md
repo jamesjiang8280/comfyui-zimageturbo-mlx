@@ -76,6 +76,18 @@ python -m huggingface_hub.commands.huggingface_cli download Tongyi-MAI/Z-Image-T
     --include "transformer/*" "text_encoder/*" "vae/*" "tokenizer/*" "scheduler/*" "model_index.json"
 ```
 
+**B2. Fetch only the shared base assets (~8.2 GB)**
+
+A single-file finetune is only the DiT; converting it needs the Qwen3-4B encoder, the FLUX AE and the
+tokenizer as a `--base`. If you do not have a snapshot yet:
+
+```bash
+python3 scripts/fetch_base_assets.py          # -> ~/ComfyUI-Shared/models/MLX/Z-Image-Turbo
+```
+
+It pulls `text_encoder/ vae/ tokenizer/ scheduler/` from `Tongyi-MAI/Z-Image-Turbo` through
+hf-mirror with ranged resume (huggingface_hub stalls / 401s on Xet for this repo).
+
 **C. Use a ComfyUI single-file finetune** (what most community models are)
 
 Put the `.safetensors` in `ComfyUI-Shared/models/unet/`, select it in the dropdown, and leave

@@ -338,9 +338,16 @@ def _prepare_from_checkpoint(src: Path, verbose: bool = False) -> Path:
 
     base = find_base_snapshot()
     if base is None:
+        fetch = NODE_DIR / "scripts" / "fetch_base_assets.py"
+        seen = [str(p) for p in model_options() if p != DEFAULT_REPO]
         raise ZImageRunError(
-            "找不到可借用的基础资产快照（需要含 text_encoder/ 与 vae/ 的 Z-Image 目录）。\n"
-            f"请先把它放到 {root}/Z-Image-Turbo（或任何下拉里能看到的完整快照）。"
+            "转换单文件需要一份基础资产快照（text_encoder/ + vae/ + tokenizer/），当前一个都没有。\n\n"
+            "解决办法（二选一）：\n"
+            f"  1) 下载基础资产（约 8.2GB，只下需要的部分，不用 33GB 全量）：\n"
+            f"       python3 \"{fetch}\"\n"
+            f"     默认落到 {root}/Z-Image-Turbo\n"
+            f"  2) 在 model 下拉里直接选 {DEFAULT_REPO}，让 mflux 自己下载完整模型（约 33GB）\n\n"
+            f"当前下拉里可见的路径：{seen or '（空）'}"
         )
 
     if not (bf16_dir / "transformer").is_dir():
