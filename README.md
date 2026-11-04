@@ -131,11 +131,15 @@ Console output while running:
 
 ```
 [zimage-mlx] 开始生成 1024x1024 steps=8 seed=42 quant=4 model=foo-q4
-[zimage-mlx] 采样 1/8 (12%)  1.92s/it  已用 3s
+[zimage-mlx] 采样 [███░░░░░░░░░░░░░░░░░░░░░] 1/8  12%  1.92s/it  已用 3s
+[zimage-mlx] 采样 [██████░░░░░░░░░░░░░░░░░░] 2/8  25%  1.71s/it  已用 6s
 ...
-[zimage-mlx] 采样 8/8 (100%)  1.44s/it  已用 14s
+[zimage-mlx] 采样 [████████████████████████] 8/8 100%  1.44s/it  已用 14s
 [zimage-mlx] 完成，用时 59.5s -> zimage_42_1024x1024.png
 ```
+
+On a real terminal the bar rewrites the same line (`\r`) instead of scrolling; when stdout is a log
+file (ComfyUI Desktop) it appends one line per step so nothing is lost.
 
 ## ControlNet
 

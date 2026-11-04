@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Callable
@@ -35,6 +36,29 @@ RATE_RE = re.compile(r"(\d+\.\d+\s*(?:s/it|it/s))")
 PHASE_RE = re.compile(r"(Loading|Encod\w*|Decod\w*|text encoder|VAE)")
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+BAR_WIDTH = 24
+
+
+def _render_bar(step: int, total: int, rate: str, elapsed: float) -> str:
+    """[████░░░░] 3/8  37%  1.6s/it  已用 5s"""
+    frac = step / total if total else 0.0
+    filled = max(0, min(BAR_WIDTH, int(round(frac * BAR_WIDTH))))
+    bar = "█" * filled + "░" * (BAR_WIDTH - filled)
+    line = f"[zimage-mlx] 采样 [{bar}] {step}/{total} {int(frac * 100):3d}%"
+    if rate:
+        line += f"  {rate}"
+    line += f"  已用 {elapsed:.0f}s"
+    return line
+
+
+def _emit_bar(line: str, final: bool = False) -> None:
+    """Rewrite one console line when attached to a tty, otherwise append lines."""
+    if sys.stdout.isatty():
+        sys.stdout.write("\r" + line + ("\n" if final else ""))
+        sys.stdout.flush()
+    else:
+        print(line, flush=True)
 
 
 class ZImageRunError(RuntimeError):
@@ -213,6 +237,9 @@ def stream_process(
         raise ZImageRunError(
             f"{label} 正常退出但没有产出图片。最近输出：\n" + "\n".join(tail[-15:])
         )
+    if sys.stdout.isatty() and last_step > 0:
+        sys.stdout.write("\n")   # 进度条是行内刷新的，收尾补换行
+        sys.stdout.flush()
     print(f"[zimage-mlx] 完成，用时 {time.time() - started:.1f}s"
           + (f" -> {out_path.name}" if out_path else ""), flush=True)
 
@@ -366,10 +393,10 @@ def run_generate(
             if step != last_step and step > 0:   # tqdm redraws, and step 0 is just its first frame
                 last_step = step
                 rate = RATE_RE.search(line)
-                suffix = f"  {rate.group(1).strip()}" if rate else ""
-                pct = f" ({step * 100 // total}%)" if total else ""
-                print(f"[zimage-mlx] 采样 {step}/{total}{pct}{suffix}"
-                      f"  已用 {time.time() - started:.0f}s", flush=True)
+                _emit_bar(_render_bar(step, total,
+                                      rate.group(1).strip() if rate else "",
+                                      time.time() - started),
+                          final=(total > 0 and step >= total))
             return
 
         # non-step phases (load / encode / decode): show once, so a long load isn't silent
