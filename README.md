@@ -197,10 +197,29 @@ sampler serves both workflows.
 | input | default | notes |
 |---|---|---|
 | `prompt` | — | |
-| `width` / `height` | 1024 | multiple of 32, 256–1536 |
+| `width` / `height` | 1024 | multiple of 32, 256–1536; **ignored when `image` is connected** |
 | `steps` | 8 | 8–9 is the distilled design point |
 | `seed` | 42 | |
+| `image` (optional) | — | connect → **image-to-image**; unconnected → text-to-image |
+| `image_strength` | 0.6 | only used with `image`: how far to repaint (mflux default 0.4) |
 | `control` (optional) | — | output of `ZImage MLX ControlNet` |
+
+### Image-to-image
+
+Connect an `IMAGE` and the sampler switches to encode → denoise → decode. The output size follows the
+**input image** (snapped to a multiple of 32); the `width`/`height` widgets are ignored, so a 768×512
+photo comes back 768×512.
+
+`image_strength` maps to mflux's `--image` strength — the fraction of the input that is re-noised:
+
+| strength | effect |
+|---|---|
+| 0.3–0.4 | barely moves; relight / restyle only (mflux's default) |
+| 0.6 | visible edit, composition held (node default) |
+| 0.8–0.9 | new environment / time of day; subject redraws |
+
+`control` and `image` are mutually exclusive: mflux's ControlNet CLI has no `--image`, so the node
+raises a clear error rather than silently ignoring one of them.
 
 ### Verified hint types
 
@@ -214,6 +233,14 @@ in this test run.
 
 Timing: 512²/4 steps ≈ 25 s, 512²/8 ≈ 42 s, 768²/8 ≈ 72 s (control runs are slower than plain
 text-to-image because the hint is VAE-encoded every call).
+
+## Workflows shipped
+
+| file | graph |
+|---|---|
+| `workflows/zimage_turbo_mlx.json` | Loader → Sampler → Save (text-to-image) |
+| `workflows/zimage_turbo_i2i_mlx.json` | Loader + LoadImage → Sampler → Save (image-to-image) |
+| `workflows/zimage_turbo_controlnet_mlx.json` | Loader + LoadImage → ControlNet → Sampler → Save + hint preview |
 
 ## Performance (measured, M5 / 24 GB)
 

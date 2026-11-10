@@ -132,6 +132,8 @@ def build_command(
     out_path: Path,
     low_ram: bool = False,
     cache_limit_gb: int = 0,
+    image_path: Path | None = None,
+    image_strength: float = 0.4,
 ) -> list[str]:
     cmd = [
         python, "-m", MODULE,
@@ -149,6 +151,8 @@ def build_command(
         cmd.append("--low-ram")
     if cache_limit_gb and cache_limit_gb > 0:
         cmd += ["--mlx-cache-limit-gb", str(cache_limit_gb)]
+    if image_path is not None:
+        cmd += ["--image", str(image_path), str(float(image_strength))]
     return cmd
 
 
@@ -327,11 +331,17 @@ def run_generate(
     out_path: Path,
     low_ram: bool = False,
     cache_limit_gb: int = 0,
+    image_path: Path | None = None,
+    image_strength: float = 0.4,
     on_progress: Callable[[int, int], None] | None = None,
     on_log: Callable[[str], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
 ) -> Path:
-    """Run one generation; returns the written PNG path."""
+    """Run one generation; returns the written PNG path.
+
+    ``image_path`` turns it into image-to-image (mflux encodes the init image,
+    renoises to ``image_strength``, denoises, decodes).
+    """
     cmd = build_command(
         python=python,
         model=model,
@@ -344,6 +354,8 @@ def run_generate(
         out_path=out_path,
         low_ram=low_ram,
         cache_limit_gb=cache_limit_gb,
+        image_path=image_path,
+        image_strength=image_strength,
     )
 
     env = os.environ.copy()
@@ -355,8 +367,9 @@ def run_generate(
     if on_log:
         on_log("[zimage-mlx] " + " ".join(cmd))
 
+    mode = f"图生图 strength={image_strength}" if image_path is not None else "文生图"
     print(
-        f"[zimage-mlx] 开始生成 {width}x{height} steps={steps} seed={seed} "
+        f"[zimage-mlx] 开始{mode} {width}x{height} steps={steps} seed={seed} "
         f"quant={quantize} model={Path(model).name}",
         flush=True,
     )

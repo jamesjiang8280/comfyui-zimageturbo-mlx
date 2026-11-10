@@ -516,6 +516,15 @@ class ZImageMlxSampler:
                 "seed": ("INT", {"default": 42, "min": 0, "max": 2**31 - 1, "step": 1}),
             },
             "optional": {
+                "image": (
+                    "IMAGE",
+                    {"tooltip": "接图片 → 图生图（用图片自身尺寸；width/height 会被忽略）"},
+                ),
+                "image_strength": (
+                    "FLOAT",
+                    {"default": 0.6, "min": 0.05, "max": 1.0, "step": 0.05,
+                     "tooltip": "重绘强度：越高越接近提示词、越低越像原图（mflux 默认 0.4）"},
+                ),
                 "control": (
                     "ZIMAGE_MLX_CN",
                     {"tooltip": "接 Z-Image-Turbo MLX ControlNet 的输出；不接就是普通文生图"},
@@ -536,11 +545,28 @@ class ZImageMlxSampler:
         height: int,
         steps: int,
         seed: int,
+        image: torch.Tensor | None = None,
+        image_strength: float = 0.6,
         control: dict[str, Any] | None = None,
     ):
         prompt = _as_str(prompt, "", "prompt", allow_numbers=True)
-        width = _snap32(_as_int(width, 1024, 256, 1536, "width"), "width")
-        height = _snap32(_as_int(height, 1024, 256, 1536, "height"), "height")
+
+        init_image = None
+        if image is not None:
+            # 图生图：尺寸取自输入图（快照到 32 的倍数），忽略 width/height 控件
+            try:
+                h, w = int(image.shape[1]), int(image.shape[2])
+            except Exception:
+                raise ZImageRunError("image 张量形状异常，应为 [B,H,W,C]。")
+            width = _snap32(w, "width(图片)")
+            height = _snap32(h, "height(图片)")
+            if (width, height) != (w, h):
+                print(f"[ZImage-MLX] 输入图 {w}x{h} -> 吸附到 {width}x{height}", flush=True)
+            init_image = image
+            image_strength = _as_float(image_strength, 0.6, 0.05, 1.0, "image_strength")
+        else:
+            width = _snap32(_as_int(width, 1024, 256, 1536, "width"), "width")
+            height = _snap32(_as_int(height, 1024, 256, 1536, "height"), "height")
         steps = _as_int(steps, 8, 1, 50, "steps")
         seed = _as_int(seed, 42, 0, 2**31 - 1, "seed")
         _report_fixes()
@@ -582,6 +608,12 @@ class ZImageMlxSampler:
             tmp_dir = Path(tmp)
             out_path = tmp_dir / f"zimage_{seed}_{width}x{height}.png"
 
+            if control and init_image is not None:
+                raise ZImageRunError(
+                    "mflux 的 ControlNet 管线不支持同时图生图（controlnet CLI 没有 --image）。\n"
+                    "请二选一：接 control（文生图 + 控制信号），或只接 image（图生图）。"
+                )
+
             if control:
                 hint = tmp_dir / "control.png"
                 _tensor_to_pil(control["image"]).save(hint)
@@ -606,6 +638,10 @@ class ZImageMlxSampler:
                     should_cancel=should_cancel,
                 )
             else:
+                init_path = None
+                if init_image is not None:
+                    init_path = tmp_dir / "init.png"
+                    _tensor_to_pil(init_image).save(init_path)
                 run_generate(
                     python=zimage_mlx_model["python"],
                     model=zimage_mlx_model["model"],
@@ -618,6 +654,8 @@ class ZImageMlxSampler:
                     out_path=out_path,
                     low_ram=bool(zimage_mlx_model.get("low_ram")),
                     cache_limit_gb=int(zimage_mlx_model.get("cache_limit_gb") or 0),
+                    image_path=init_path,
+                    image_strength=float(image_strength),
                     on_progress=on_progress,
                     on_log=on_log,
                     should_cancel=should_cancel,

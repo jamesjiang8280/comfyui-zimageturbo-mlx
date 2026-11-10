@@ -132,7 +132,7 @@
       ],
       "size": [
         400,
-        240
+        250
       ],
       "flags": {},
       "order": 3,
@@ -166,7 +166,8 @@
         1024,
         1024,
         8,
-        42
+        42,
+        0.6
       ]
     },
     {
@@ -235,7 +236,7 @@
       ],
       "size": [
         440,
-        190
+        180
       ],
       "flags": {},
       "order": 6,
@@ -246,7 +247,7 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "ControlNet 喂【原图】，mflux 会按 control_type 自己预处理\n第二个输出 = 预处理结果，接 PreviewImage 可直接看\n\ncontrolnet_model 在节点下拉里选（首次需下 6.71GB Union 权重）"
+        "ControlNet 喂原图；第二个输出是预处理结果\n注意：control 与 image 不能同时接（mflux 不支持 controlnet+i2i）"
       ]
     }
   ],
