@@ -49,6 +49,7 @@ except Exception:  # pragma: no cover
     comfy_utils = None
 
 
+NODE_DIR = Path(__file__).resolve().parent
 VERSION = "1.0.0"
 
 DEFAULT_REPO = "Tongyi-MAI/Z-Image-Turbo"
@@ -145,8 +146,14 @@ def default_model_dir() -> Path:
     return mlx_root() / "Z-Image-Turbo"
 
 
-def _is_zimage_diffusers(path: Path) -> bool:
-    """A diffusers snapshot of the Z-Image DiT (not just any transformer dir)."""
+def _has_transformer_weights(path: Path) -> bool:
+    """True only when the dir actually carries DiT safetensors (not just config.json)."""
+    tdir = path / "transformer"
+    return tdir.is_dir() and any(tdir.glob("*.safetensors"))
+
+
+def _is_zimage_config(path: Path) -> bool:
+    """transformer/config.json declares the Z-Image DiT (weights may be absent)."""
     cfg = path / "transformer" / "config.json"
     try:
         return json.loads(cfg.read_text(encoding="utf-8")).get("_class_name") == "ZImageTransformer2DModel"
@@ -154,10 +161,15 @@ def _is_zimage_diffusers(path: Path) -> bool:
         return False
 
 
+def _is_zimage_diffusers(path: Path) -> bool:
+    """A *runnable* diffusers snapshot of the Z-Image DiT."""
+    return _has_transformer_weights(path) and _is_zimage_config(path)
+
+
 def _is_mflux_saved(path: Path) -> bool:
     """An mflux-save output (quantized on disk); identified by its model json."""
     f = path / "mflux_model.json"
-    if not f.is_file():
+    if not f.is_file() or not _has_transformer_weights(path):
         return False
     try:
         blob = f.read_text(encoding="utf-8").lower()
@@ -190,14 +202,20 @@ def _saved_source(path: Path) -> str:
 
 
 def model_options() -> list[str]:
-    """Dropdown contents: ready MLX models first, then single-file checkpoints."""
+    """Dropdown contents: MLX dirs, then single-file checkpoints, then the HF repo.
+
+    A Z-Image-looking dir is listed even when its DiT is missing (base-only
+    snapshot): it is still useful as the converter's ``--base`` and as a target
+    to complete later. Picking it to *generate* fails with a precise message.
+    """
     opts: list[str] = []
     root = mlx_root()
     if root.is_dir():
         for d in sorted(root.iterdir(), key=lambda x: x.name.lower()):
             if not d.is_dir():
                 continue
-            if _is_mflux_saved(d) or _is_zimage_diffusers(d):
+            looks_zimage = _is_mflux_saved(d) or _is_zimage_config(d)
+            if looks_zimage:
                 opts.append(str(d))
     for folder in ("unet", "diffusion_models"):
         base = Path.home() / "ComfyUI-Shared" / "models" / folder
@@ -211,21 +229,29 @@ def model_options() -> list[str]:
 
 
 def default_model_value() -> str:
+    root = mlx_root()
+    preferred = root / "Z-Image-Turbo"
+    if preferred.is_dir():
+        return str(preferred)
     for opt in model_options():
         if opt != DEFAULT_REPO and ("-q4" in opt or _is_mflux_saved(Path(opt))):
             return opt
-    return model_options()[0] if model_options() else DEFAULT_REPO
+    opts = model_options()
+    return opts[0] if opts else DEFAULT_REPO
 
 
 def find_base_snapshot(exclude: str = "") -> Path | None:
-    """A snapshot that has text_encoder/ + vae/ (+ tokenizer) to lend to a finetune."""
-    for opt in model_options():
-        p = Path(opt)
+    """A dir that has text_encoder/ + vae/ to lend to a finetune.
+
+    Deliberately scans the models root instead of model_options(): a snapshot that
+    only carries the shared components (no DiT) is useless as a *model* but exactly
+    what the converter needs as --base.
+    """
+    root = mlx_root()
+    if not root.is_dir():
+        return None
+    for p in sorted(root.iterdir()):
         if not p.is_dir() or str(p) == exclude:
-            continue
-        if _is_mflux_saved(p):        # quantized dirs may symlink the same components
-            if (p / "text_encoder").is_dir() and (p / "vae").is_dir():
-                return p
             continue
         if (p / "text_encoder").is_dir() and (p / "vae").is_dir():
             return p
@@ -466,11 +492,16 @@ class ZImageMlxLoader:
                     "要么填 HF 仓库名（如 Tongyi-MAI/Z-Image-Turbo）让 mflux 自动下载，"
                     "要么先下载好 diffusers 目录再填路径。"
                 )
-            model = str(expanded)
-            has_files = (expanded / "transformer").is_dir() and (expanded / "text_encoder").is_dir()
-            if not has_files:
+            if not _has_transformer_weights(expanded):
+                fetch = NODE_DIR / "scripts" / "fetch_base_assets.py"
                 raise ZImageRunError(
-                    f"{expanded} 看起来不是 diffusers 快照（缺 transformer/ 或 text_encoder/）。"
+                    f"{expanded.name} 里没有 DiT 权重（transformer/*.safetensors 为空）。\n\n"
+                    "这个目录只有 text_encoder / vae / tokenizer —— 它只能当转换用的 --base，"
+                    "不能直接出图。解决办法：\n"
+                    f"  • 补下 DiT（bf16，约 12.3GB）：\n"
+                    f"      python3 \"{fetch}\" --with-transformer\n"
+                    f"  • 或者选一个已经完整的模型目录（含 transformer 权重）\n"
+                    f"  • 或者选 unet/*.safetensors 单文件，让节点自动转换\n"
                 )
 
         python = find_python()

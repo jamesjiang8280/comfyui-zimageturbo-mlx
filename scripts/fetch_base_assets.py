@@ -26,12 +26,14 @@ import urllib.request
 from pathlib import Path
 
 REPO = "Tongyi-MAI/Z-Image-Turbo"
+# bf16 transformer lives in a different repo (half the bytes of the fp32 original)
+TRANSFORMER_REPO = "mlx-community/Z-Image-Turbo-bf16"
 WANTED = ("text_encoder/", "vae/", "tokenizer/", "scheduler/")
 EXTRA = ("model_index.json", "transformer/config.json")
 
 
-def api_listing(endpoint: str) -> list[dict]:
-    url = f"{endpoint}/api/models/{REPO}?blobs=true"
+def api_listing(endpoint: str, repo: str = REPO) -> list[dict]:
+    url = f"{endpoint}/api/models/{repo}?blobs=true"
     for attempt in range(5):
         try:
             with urllib.request.urlopen(url, timeout=60) as r:
@@ -39,7 +41,7 @@ def api_listing(endpoint: str) -> list[dict]:
         except Exception as exc:
             print(f"[warn] listing attempt {attempt + 1}: {exc}", flush=True)
             time.sleep(3 * (attempt + 1))
-    raise SystemExit(f"无法获取 {REPO} 的文件列表（试试 --no-mirror 或设 HF_ENDPOINT）")
+    raise SystemExit(f"无法获取 {repo} 的文件列表（试试 --no-mirror 或设 HF_ENDPOINT）")
 
 
 def total_size(url: str) -> int:
@@ -78,20 +80,28 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dest", default=str(Path.home() / "ComfyUI-Shared" / "models" / "MLX" / "Z-Image-Turbo"))
     ap.add_argument("--no-mirror", action="store_true", help="use huggingface.co instead of hf-mirror.com")
+    ap.add_argument("--with-transformer", action="store_true",
+                    help="also fetch the DiT (12.3 GB bf16) so the dir is a runnable model")
     args = ap.parse_args()
 
     endpoint = "https://huggingface.co" if args.no_mirror else "https://hf-mirror.com"
     dest = Path(args.dest).expanduser()
     dest.mkdir(parents=True, exist_ok=True)
 
-    files = [s for s in api_listing(endpoint)
+    files = [(REPO, s) for s in api_listing(endpoint)
              if s.get("size") and (s["rfilename"].startswith(WANTED) or s["rfilename"] in EXTRA)]
-    total = sum(s["size"] for s in files)
+
+    if args.with_transformer:
+        for s in api_listing(endpoint, TRANSFORMER_REPO):
+            if s.get("size") and s["rfilename"].startswith("transformer/") and s["rfilename"].endswith(".safetensors"):
+                files.append((TRANSFORMER_REPO, s))
+
+    total = sum(s["size"] for _, s in files)
     print(f"[plan] {len(files)} 个文件 / {total / 1e9:.2f} GB -> {dest}", flush=True)
 
-    for s in sorted(files, key=lambda x: x["rfilename"]):
+    for repo, s in sorted(files, key=lambda x: x[1]["rfilename"]):
         name, size = s["rfilename"], s["size"]
-        fetch(f"{endpoint}/{REPO}/resolve/main/{name}", dest / name, size)
+        fetch(f"{endpoint}/{repo}/resolve/main/{name}", dest / name, size)
 
     print(f"[ok] base 资产就绪：{dest}", flush=True)
     print(f"     下一步：python3 convert_zimage_checkpoint.py --input <ckpt> --out <dir> --base {dest}", flush=True)
