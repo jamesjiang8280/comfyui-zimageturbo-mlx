@@ -41,7 +41,7 @@ BAR_WIDTH = 24
 
 
 def _render_bar(step: int, total: int, rate: str, elapsed: float) -> str:
-    """[████░░░░] 3/8  37%  1.6s/it  已用 5s"""
+    """[████░░░░] 3/8  37%  1.6s/it  已用 5s  剩余 8s"""
     frac = step / total if total else 0.0
     filled = max(0, min(BAR_WIDTH, int(round(frac * BAR_WIDTH))))
     bar = "█" * filled + "░" * (BAR_WIDTH - filled)
@@ -49,27 +49,33 @@ def _render_bar(step: int, total: int, rate: str, elapsed: float) -> str:
     if rate:
         line += f"  {rate}"
     line += f"  已用 {elapsed:.0f}s"
+    if 0 < step < total and elapsed > 0:
+        line += f"  剩余 {elapsed / step * (total - step):.0f}s"
     return line
 
 
-def _stdout_is_tty() -> bool:
-    """ComfyUI swaps sys.stdout for its own _LogWriter, which has no isatty()."""
+def _tty_fd() -> int | None:
+    """fd 1 if the process console is a real terminal, else None.
+
+    Checked on the fd, not on sys.stdout: ComfyUI replaces sys.stdout with a
+    _LogWriter that has no isatty(), yet the process may still be attached to a
+    terminal (running `python main.py` from a shell).
+    """
     try:
-        probe = getattr(sys.stdout, "isatty", None)
-        return bool(probe()) if callable(probe) else False
+        return 1 if os.isatty(1) else None
     except Exception:
-        return False
+        return None
 
 
 def _emit_bar(line: str, final: bool = False) -> None:
-    """Rewrite one console line when attached to a tty, otherwise append lines."""
-    if _stdout_is_tty():
+    """Rewrite one console line on a terminal; append a line per step otherwise."""
+    fd = _tty_fd()
+    if fd is not None:
         try:
-            sys.stdout.write("\r" + line + ("\n" if final else ""))
-            sys.stdout.flush()
+            os.write(fd, ("\r" + line + ("\n" if final else "")).encode("utf-8", "replace"))
             return
         except Exception:
-            pass          # fall through to plain print
+            pass          # fall through to plain print (log file / pipe)
     print(line, flush=True)
 
 
@@ -253,10 +259,9 @@ def stream_process(
         raise ZImageRunError(
             f"{label} 正常退出但没有产出图片。最近输出：\n" + "\n".join(tail[-15:])
         )
-    if last_step > 0 and _stdout_is_tty():
+    if last_step > 0 and _tty_fd() is not None:
         try:
-            sys.stdout.write("\n")   # 进度条是行内刷新的，收尾补换行
-            sys.stdout.flush()
+            os.write(1, b"\n")       # 进度条是行内刷新的，收尾补换行
         except Exception:
             pass
     print(f"[zimage-mlx] 完成，用时 {time.time() - started:.1f}s"
