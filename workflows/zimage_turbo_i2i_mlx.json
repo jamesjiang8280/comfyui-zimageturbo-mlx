@@ -172,7 +172,7 @@
         "Node name for S&R": "Note"
       },
       "widgets_values": [
-        "图生图：接 image 即走 encode→sampling→decode\nimage_strength 0.5 轻微重绘 / 0.7 明显改动 / 0.9 换环境"
+        "图生图：接 image 即走 encode→sampling→decode\nimage_strength 越大越接近原图：0.9 微调 / 0.6 明显改动 / 0.3 大幅重绘\n（与 ComfyUI 的 denoise 方向相反）"
       ]
     }
   ],

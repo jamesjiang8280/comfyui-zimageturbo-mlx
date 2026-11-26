@@ -38,7 +38,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from .runner import (ZImageRunError, find_python, render_control_hint,
+from .runner import (ZImageRunError, _say, find_python, render_control_hint,
                      run_controlnet, run_generate)
 
 try:  # optional: progress bar + interruption, only available inside ComfyUI
@@ -67,7 +67,7 @@ def _fix(name: str, msg: str) -> None:
 
 def _report_fixes() -> None:
     if _FIXES:
-        print("[ZImage-MLX] 参数已自动规整：" + "; ".join(_FIXES), flush=True)
+        _say("[ZImage-MLX] 参数已自动规整：" + "; ".join(_FIXES))
         _FIXES.clear()
 
 
@@ -318,7 +318,7 @@ def ensure_composite(base_dir: Path, ckpt: Path) -> Path:
             target.symlink_to(ckpt)
         except OSError:
             pass
-    print(f"[ZImage-MLX] 组合目录就绪：{comp}", flush=True)
+    _say(f"[ZImage-MLX] 组合目录就绪：{comp}")
     return comp
 
 
@@ -344,14 +344,14 @@ def _prepared_for(src: Path) -> Path | None:
 
 
 def _run_stream(cmd: list[str], label: str, verbose: bool) -> None:
-    print(f"[ZImage-MLX] {label}: {' '.join(str(c) for c in cmd[:8])} ...", flush=True)
+    _say(f"[ZImage-MLX] {label}: {' '.join(str(c) for c in cmd[:8])} ...")
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             text=True, bufsize=1)
     assert proc.stdout is not None
     for line in proc.stdout:
         line = line.rstrip()
         if verbose or line.startswith(("[", "Saved", "Error", "Traceback")):
-            print("   " + line[:200], flush=True)
+            _say("   " + line[:200])
     code = proc.wait()
     if code != 0:
         raise ZImageRunError(f"{label} 失败（退出码 {code}），详见控制台日志。")
@@ -386,7 +386,7 @@ def _prepare_from_checkpoint(src: Path, verbose: bool = False) -> Path:
             verbose,
         )
     else:
-        print(f"[ZImage-MLX] 复用已转换的 {bf16_dir}", flush=True)
+        _say(f"[ZImage-MLX] 复用已转换的 {bf16_dir}")
 
     if not _is_mflux_saved(q4_dir):
         python = find_python()
@@ -507,9 +507,8 @@ class ZImageMlxLoader:
                 )
 
         python = find_python()
-        print(
-            f"[ZImage-MLX] v{VERSION} | model={model} | quant={quantization} | python={python}",
-            flush=True,
+        _say(
+            f"[ZImage-MLX] v{VERSION} | model={model} | quant={quantization} | python={python}"
         )
         return (
             {
@@ -556,7 +555,8 @@ class ZImageMlxSampler:
                 "image_strength": (
                     "FLOAT",
                     {"default": 0.6, "min": 0.05, "max": 1.0, "step": 0.05,
-                     "tooltip": "重绘强度：越高越接近提示词、越低越像原图（mflux 默认 0.4）"},
+                     "tooltip": "越大越接近原图（0.9≈微调，0.3≈大幅重绘）；1.0 基本等于原图；"
+                                "这是 mflux 的保留度，不是 ComfyUI 的 denoise（方向相反）"},
                 ),
                 "control": (
                     "ZIMAGE_MLX_CN",
@@ -594,9 +594,11 @@ class ZImageMlxSampler:
             width = _snap32(w, "width(图片)")
             height = _snap32(h, "height(图片)")
             if (width, height) != (w, h):
-                print(f"[ZImage-MLX] 输入图 {w}x{h} -> 吸附到 {width}x{height}", flush=True)
+                _say(f"[ZImage-MLX] 输入图 {w}x{h} -> 吸附到 {width}x{height}")
             init_image = image
             image_strength = _as_float(image_strength, 0.6, 0.05, 1.0, "image_strength")
+            # mflux: init_time_step = max(1, int(steps * strength))，即从第几步开始去噪。
+            # 强度越大 -> 起点越靠后 -> 加噪越少 -> 越接近原图（与 ComfyUI 的 denoise 相反）。
         else:
             width = _snap32(_as_int(width, 1024, 256, 1536, "width"), "width")
             height = _snap32(_as_int(height, 1024, 256, 1536, "height"), "height")
@@ -635,7 +637,7 @@ class ZImageMlxSampler:
 
         def on_log(line: str) -> None:
             if verbose or line.startswith("[zimage-mlx]"):
-                print(line, flush=True)
+                _say(line)
 
         with tempfile.TemporaryDirectory(prefix="zimage_mlx_") as tmp:
             tmp_dir = Path(tmp)
@@ -784,11 +786,10 @@ class ZImageMlxControlNet:
             hint.load()
             hint_tensor = _pil_to_tensor(hint)
 
-        print(
+        _say(
             f"[ZImage-MLX] ControlNet 就绪：{control_type} "
             f"strength={control_strength} × {controlnet_strength} | {ckpt.name} "
-            f"| hint {hint.size[0]}x{hint.size[1]}",
-            flush=True,
+            f"| hint {hint.size[0]}x{hint.size[1]}"
         )
         return (
             {
@@ -815,4 +816,4 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZImage MLX ControlNet": "Z-Image-Turbo MLX ControlNet",
 }
 
-print(f"[ZImage-MLX] nodes v{VERSION} loaded", flush=True)
+_say(f"[ZImage-MLX] nodes v{VERSION} loaded")

@@ -54,6 +54,27 @@ def _render_bar(step: int, total: int, rate: str, elapsed: float) -> str:
     return line
 
 
+def _console():
+    """The real console stream.
+
+    Some custom nodes reassign sys.stdout at import time (Krea2's worker does),
+    which silently swallows every print from other nodes. sys.__stdout__ is the
+    original stream Python installed and is left intact by that trick.
+    """
+    stream = getattr(sys, "__stdout__", None)
+    return stream if stream is not None else sys.stdout
+
+
+def _say(msg: str) -> None:
+    """print() that survives a hijacked sys.stdout."""
+    try:
+        stream = _console()
+        stream.write(str(msg) + "\n")
+        stream.flush()
+    except Exception:
+        print(msg, flush=True)
+
+
 def _tty_fd() -> int | None:
     """fd 1 if the process console is a real terminal, else None.
 
@@ -75,8 +96,8 @@ def _emit_bar(line: str, final: bool = False) -> None:
             os.write(fd, ("\r" + line + ("\n" if final else "")).encode("utf-8", "replace"))
             return
         except Exception:
-            pass          # fall through to plain print (log file / pipe)
-    print(line, flush=True)
+            pass          # fall through to the plain path below
+    _say(line)
 
 
 class ZImageRunError(RuntimeError):
@@ -217,16 +238,22 @@ def stream_process(
             if step != last_step and step > 0:
                 last_step = step
                 rate = RATE_RE.search(line)
-                suffix = f"  {rate.group(1).strip()}" if rate else ""
-                pct = f" ({step * 100 // total}%)" if total else ""
-                print(f"[zimage-mlx] 采样 {step}/{total}{pct}{suffix}"
-                      f"  已用 {time.time() - started:.0f}s", flush=True)
+                _emit_bar(_render_bar(step, total,
+                                      rate.group(1).strip() if rate else "",
+                                      time.time() - started),
+                          final=(total > 0 and step >= total))
             return
 
         ph = PHASE_RE.search(line)
         if ph and ph.group(1) not in announced:
             announced.add(ph.group(1))
-            print(f"[zimage-mlx] {line[:120]}", flush=True)
+            _say(f"[zimage-mlx] {line[:120]}")
+
+    if last_step > 0 and _tty_fd() is not None:
+        try:
+            os.write(1, b"\n")
+        except Exception:
+            pass
 
     try:
         assert proc.stdout is not None
@@ -264,8 +291,8 @@ def stream_process(
             os.write(1, b"\n")       # 进度条是行内刷新的，收尾补换行
         except Exception:
             pass
-    print(f"[zimage-mlx] 完成，用时 {time.time() - started:.1f}s"
-          + (f" -> {out_path.name}" if out_path else ""), flush=True)
+    _say(f"[zimage-mlx] 完成，用时 {time.time() - started:.1f}s"
+          + (f" -> {out_path.name}" if out_path else ""))
 
 
 def run_controlnet(
@@ -293,8 +320,8 @@ def run_controlnet(
     if not script.is_file():
         raise ZImageRunError(f"找不到 ControlNet 驱动脚本：{script}")
 
-    print(f"[zimage-mlx] 开始生成（ControlNet {control_type}）{width}x{height} "
-          f"steps={steps} seed={seed} strength={control_strength}", flush=True)
+    _say(f"[zimage-mlx] 开始生成（ControlNet {control_type}）{width}x{height} "
+          f"steps={steps} seed={seed} strength={control_strength}")
     cmd = [
         python, str(script),
         "--model", str(model),
@@ -387,11 +414,15 @@ def run_generate(
     if on_log:
         on_log("[zimage-mlx] " + " ".join(cmd))
 
-    mode = f"图生图 strength={image_strength}" if image_path is not None else "文生图"
-    print(
+    if image_path is not None:
+        # mflux skips the first max(1, int(steps*strength)) steps when starting from an image
+        skip = max(1, int(steps * float(image_strength)))
+        mode = f"图生图 strength={image_strength}（实际去噪 {max(0, steps - skip)}/{steps} 步）"
+    else:
+        mode = "文生图"
+    _say(
         f"[zimage-mlx] 开始{mode} {width}x{height} steps={steps} seed={seed} "
-        f"quant={quantize} model={Path(model).name}",
-        flush=True,
+        f"quant={quantize} model={Path(model).name}"
     )
 
     proc = subprocess.Popen(
@@ -436,7 +467,7 @@ def run_generate(
         ph = PHASE_RE.search(line)
         if ph and ph.group(1) not in announced:
             announced.add(ph.group(1))
-            print(f"[zimage-mlx] {line[:120]}", flush=True)
+            _say(f"[zimage-mlx] {line[:120]}")
 
     try:
         assert proc.stdout is not None
@@ -474,5 +505,5 @@ def run_generate(
         raise ZImageRunError(
             "mflux 正常退出但没有产出图片。最近输出：\n" + "\n".join(tail[-15:])
         )
-    print(f"[zimage-mlx] 完成，用时 {time.time() - started:.1f}s -> {out_path.name}", flush=True)
+    _say(f"[zimage-mlx] 完成，用时 {time.time() - started:.1f}s -> {out_path.name}")
     return out_path

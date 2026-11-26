@@ -235,13 +235,30 @@ Connect an `IMAGE` and the sampler switches to encode → denoise → decode. Th
 **input image** (snapped to a multiple of 32); the `width`/`height` widgets are ignored, so a 768×512
 photo comes back 768×512.
 
-`image_strength` maps to mflux's `--image` strength — the fraction of the input that is re-noised:
+`image_strength` maps to mflux's `--image` strength, which is **how much of the input is kept**, not
+how hard it is repainted — the direction is the opposite of ComfyUI's `denoise`:
 
-| strength | effect |
-|---|---|
-| 0.3–0.4 | barely moves; relight / restyle only (mflux's default) |
-| 0.6 | visible edit, composition held (node default) |
-| 0.8–0.9 | new environment / time of day; subject redraws |
+```
+init_time_step = max(1, int(steps * strength))      # mflux
+latents = (1 - sigma) * encoded_image + sigma * noise
+```
+
+A larger strength starts denoising later in the schedule, so less noise is mixed in and the output
+stays closer to the input. Measured on a 768×512 photo (8 steps):
+
+| strength | mean pixel distance from input | effect |
+|---|---|---|
+| 0.3 | 26.4 | heavy repaint — composition survives, subject is redrawn |
+| 0.6 | 12.9 | clear edit, subject kept (node default) |
+| 0.9 | 5.0 | light touch-up, nearly the same picture |
+| 1.0 | ≈ 0 | basically returns the input |
+
+Because the first `max(1, int(steps * strength))` steps are skipped, a high strength also runs
+*fewer* denoise steps (0.9 with 8 steps = 1 step of work), which is why it is fast and barely
+changes anything. The node prints the effective count in the console.
+
+`0.05` (the minimum) is close to pure text-to-image; there is no "0 = ignore image", because mflux
+only enters the image-to-image path when strength > 0.
 
 `control` and `image` are mutually exclusive: mflux's ControlNet CLI has no `--image`, so the node
 raises a clear error rather than silently ignoring one of them.
