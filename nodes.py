@@ -914,6 +914,67 @@ class ZImageMlxLoraLoader:
         return (cfg,)
 
 
+class ZImageMlxLoraStack:
+    """Stack Z-Image LoRAs in one node (2 slots by default, "+" adds up to 10).
+
+    ComfyUI shows slots 1-2; the bundled web/zimage_lora_stack.js adds the "＋" button
+    that reveals the next pair (and removes the ones it hides). Every slot is declared
+    here as an optional input so the JS-added widgets map to real inputs.
+    """
+
+    CATEGORY = "ZImage MLX"
+    MAX_SLOTS = 10
+    DEFAULT_SLOTS = 2
+
+    @classmethod
+    def INPUT_TYPES(cls) -> dict[str, Any]:
+        choices = ["none"] + lora_options()
+        optional: dict[str, Any] = {}
+        for i in range(1, cls.MAX_SLOTS + 1):
+            optional[f"lora_{i}"] = (
+                choices,
+                {"default": "none", "tooltip": f"第 {i} 个 LoRA；none = 空槽"},
+            )
+            optional[f"strength_{i}"] = (
+                "FLOAT",
+                {"default": 1.0, "min": -4.0, "max": 4.0, "step": 0.05,
+                 "tooltip": f"第 {i} 个 LoRA 的强度"},
+            )
+        return {"required": {"zimage_mlx_model": ("ZIMAGE_MLX_CONFIG",)},
+                "optional": optional}
+
+    RETURN_TYPES = ("ZIMAGE_MLX_CONFIG",)
+    RETURN_NAMES = ("zimage_mlx_model",)
+    FUNCTION = "apply"
+
+    def apply(self, zimage_mlx_model: dict[str, Any], **kwargs: Any) -> tuple[dict[str, Any]]:
+        cfg = dict(zimage_mlx_model or {})
+        paths = list(cfg.get("lora_paths") or [])
+        scales = list(cfg.get("lora_scales") or [])
+
+        picked: list[tuple[str, float]] = []
+        for i in range(1, self.MAX_SLOTS + 1):
+            name = kwargs.get(f"lora_{i}", "none")
+            if not name or name == "none":
+                continue
+            strength = _as_float(kwargs.get(f"strength_{i}", 1.0), 1.0, -4.0, 4.0, f"strength_{i}")
+            picked.append((name, strength))
+
+        if not picked:
+            _say("[ZImage-MLX] LoRA Stack: 没有选中的 LoRA（直通）")
+            return (cfg,)
+
+        for name, strength in picked:
+            paths.append(str(resolve_lora(name)))
+            scales.append(float(strength))
+        cfg["lora_paths"] = paths
+        cfg["lora_scales"] = scales
+        _say("[ZImage-MLX] LoRA Stack: "
+             + ", ".join(f"{n}@{s:.2f}" for n, s in picked)
+             + f"（共 {len(paths)} 个）")
+        return (cfg,)
+
+
 class ZImageMlxEasyCache:
     """Enable mflux's StepCache for Z-Image-Turbo MLX (config in, config out).
 
@@ -975,6 +1036,7 @@ NODE_CLASS_MAPPINGS = {
     "ZImage MLX ControlNet": ZImageMlxControlNet,
     "ZImage MLX EasyCache": ZImageMlxEasyCache,
     "ZImage MLX LoRA": ZImageMlxLoraLoader,
+    "ZImage MLX LoRA Stack": ZImageMlxLoraStack,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -983,6 +1045,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZImage MLX ControlNet": "Z-Image-Turbo MLX ControlNet",
     "ZImage MLX EasyCache": "Z-Image-Turbo MLX EasyCache",
     "ZImage MLX LoRA": "Z-Image-Turbo MLX LoRA",
+    "ZImage MLX LoRA Stack": "Z-Image-Turbo MLX LoRA Stack",
 }
 
 _say(f"[ZImage-MLX] nodes v{VERSION} loaded")

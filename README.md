@@ -251,6 +251,28 @@ them to the driver as repeated `--lora PATH SCALE` (the LoRA is baked into the w
 First run with a LoRA costs a few extra seconds (load + merge); measured 20 MB LoRA at 512²/4 steps:
 8.8 s without, 16.8 s with (that includes the merge, not just sampling).
 
+### LoRA stack (multi-slot)
+
+`Z-Image-Turbo MLX LoRA Stack` holds several LoRAs in one node instead of chaining loaders.
+
+- shows **2 slots** by default; the `＋ 添加 LoRA 槽` button reveals one more pair, up to **10**
+- empty slots (`none`) are ignored, so unused slots cost nothing
+- the web extension in `web/zimage_lora_stack.js` does the show/hide; every slot is declared as an
+  optional input on the Python side, so the values always map to real inputs
+
+```
+ZImage MLX Loader ─▶ ZImage MLX LoRA Stack ─▶ ZImage MLX Sampler
+```
+
+Measured (512², 4 steps, seed 7): no LoRA 57.9 s, one LoRA 95.9 s, two LoRAs 33.6 s — the spread is
+model reload noise between subprocesses, not the LoRAs themselves; what matters is that the two-LoRA
+render differs from the one-LoRA one (mean pixel diff 8.5).
+
+⚠️ Not every Z-Image LoRA loads. mflux maps a specific key layout; adapters converted from a
+different naming scheme fail with `240 of the 240 layers … could not be applied`. In this machine's
+collection `hina_zImageTurbo_asianMix_v7.0-R-rev1_fp32.safetensors` is one of those — the runner now
+appends a hint explaining it is a LoRA/model mapping mismatch rather than a broken file.
+
 ### EasyCache (step reuse)
 
 `Z-Image-Turbo MLX EasyCache` sits between the Loader and the Sampler and turns on mflux's

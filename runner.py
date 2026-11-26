@@ -299,7 +299,13 @@ def stream_process(
             proc.wait()
 
     if code != 0:
-        raise ZImageRunError(f"{label} 退出码 {code}。最近输出：\n" + "\n".join(tail[-15:]))
+        joined = "\n".join(tail[-15:])
+        if "could not be applied" in joined or "do not match" in joined:
+            joined += (
+                "\n\n提示：这个 LoRA 的权重命名和 mflux 的 Z-Image 映射对不上，"
+                "常见于给 diffusers/ComfyUI 转换的 LoRA。换一个 LoRA，或先在 mflux 仓库提 issue。"
+            )
+        raise ZImageRunError(f"{label} 退出码 {code}。最近输出：\n" + joined)
     if out_path is not None and not out_path.is_file():
         raise ZImageRunError(
             f"{label} 正常退出但没有产出图片。最近输出：\n" + "\n".join(tail[-15:])
@@ -517,9 +523,13 @@ def run_generate(
             proc.wait()
 
     if code != 0:
-        raise ZImageRunError(
-            f"mflux 退出码 {code}。最近输出：\n" + "\n".join(tail[-15:])
-        )
+        joined = "\n".join(tail[-15:])
+        if "could not be applied" in joined or "do not match" in joined:
+            joined += (
+                "\n\n提示：这个 LoRA 的权重命名和 mflux 的 Z-Image 映射对不上，"
+                "常见于给 diffusers/ComfyUI 转换的 LoRA。换一个 LoRA，或先在 mflux 仓库提 issue。"
+            )
+        raise ZImageRunError(f"mflux 退出码 {code}。最近输出：\n" + joined)
     if not out_path.is_file():
         raise ZImageRunError(
             "mflux 正常退出但没有产出图片。最近输出：\n" + "\n".join(tail[-15:])
