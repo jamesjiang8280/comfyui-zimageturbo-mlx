@@ -54,6 +54,11 @@ def _render_bar(step: int, total: int, rate: str, elapsed: float) -> str:
     return line
 
 
+def _logger():
+    import logging
+    return logging.getLogger("zimage-mlx")
+
+
 def _console():
     """The real console stream.
 
@@ -66,8 +71,17 @@ def _console():
 
 
 def _say(msg: str) -> None:
-    """print() that survives a hijacked sys.stdout."""
-    try:
+    """Emit one line so it lands in ComfyUI's console *and* comfyui.log.
+
+    ComfyUI installs a root-logger handler and wraps sys.stdout in a
+    LogInterceptor; writing to sys.stdout/sys.__stdout__ from a custom node is
+    not surfaced in the desktop console at all. logging.info() is.
+    """
+    import logging
+    if logging.getLogger().handlers:
+        _logger().info("%s", msg)
+        return
+    try:                      # standalone script: no logging configured
         stream = _console()
         stream.write(str(msg) + "\n")
         stream.flush()
@@ -75,28 +89,8 @@ def _say(msg: str) -> None:
         print(msg, flush=True)
 
 
-def _tty_fd() -> int | None:
-    """fd 1 if the process console is a real terminal, else None.
-
-    Checked on the fd, not on sys.stdout: ComfyUI replaces sys.stdout with a
-    _LogWriter that has no isatty(), yet the process may still be attached to a
-    terminal (running `python main.py` from a shell).
-    """
-    try:
-        return 1 if os.isatty(1) else None
-    except Exception:
-        return None
-
-
 def _emit_bar(line: str, final: bool = False) -> None:
-    """Rewrite one console line on a terminal; append a line per step otherwise."""
-    fd = _tty_fd()
-    if fd is not None:
-        try:
-            os.write(fd, ("\r" + line + ("\n" if final else "")).encode("utf-8", "replace"))
-            return
-        except Exception:
-            pass          # fall through to the plain path below
+    """One console/log line per step, carrying the bar glyphs."""
     _say(line)
 
 
@@ -271,12 +265,6 @@ def stream_process(
             announced.add(ph.group(1))
             _say(f"[zimage-mlx] {line[:120]}")
 
-    if last_step > 0 and _tty_fd() is not None:
-        try:
-            os.write(1, b"\n")
-        except Exception:
-            pass
-
     try:
         assert proc.stdout is not None
         while True:
@@ -308,11 +296,6 @@ def stream_process(
         raise ZImageRunError(
             f"{label} 正常退出但没有产出图片。最近输出：\n" + "\n".join(tail[-15:])
         )
-    if last_step > 0 and _tty_fd() is not None:
-        try:
-            os.write(1, b"\n")       # 进度条是行内刷新的，收尾补换行
-        except Exception:
-            pass
     _say(f"[zimage-mlx] 完成，用时 {time.time() - started:.1f}s"
           + (f" -> {out_path.name}" if out_path else ""))
 
