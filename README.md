@@ -255,7 +255,8 @@ First run with a LoRA costs a few extra seconds (load + merge); measured 20 MB L
 
 `Z-Image-Turbo MLX LoRA Stack` holds several LoRAs in one node instead of chaining loaders.
 
-- shows **2 slots** by default; the `＋ 添加 LoRA 槽` button reveals one more pair, up to **10**
+- shows **2 slots** by default; `＋ 添加 LoRA 槽` reveals one more pair (up to **10**) and
+  `－ 删除最后槽` removes the last one (down to 1), always with the `lora` row above `strength`
 - empty slots (`none`) are ignored, so unused slots cost nothing
 - the web extension in `web/zimage_lora_stack.js` does the show/hide; every slot is declared as an
   optional input on the Python side, so the values always map to real inputs
