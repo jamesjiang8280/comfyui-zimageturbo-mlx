@@ -229,6 +229,36 @@ sampler serves both workflows.
 | `image_strength` | 0.6 | only used with `image`: how far to repaint (mflux default 0.4) |
 | `control` (optional) | — | output of `ZImage MLX ControlNet` |
 
+### EasyCache (step reuse)
+
+`Z-Image-Turbo MLX EasyCache` sits between the Loader and the Sampler and turns on mflux's
+TeaCache-style `StepCache`: the steps whose sigma changes least are skipped and the previous step's
+prediction is reused. It is config-in / config-out, so it can be dropped in or bypassed for A/B.
+
+```
+ZImage MLX Loader ─▶ ZImage MLX EasyCache ─▶ ZImage MLX Sampler
+```
+
+| input | default | notes |
+|---|---|---|
+| `enabled` | true | off = straight passthrough |
+| `reuse_ratio` | 0.15 | share of steps to skip; 8 steps → 0.15 skips 1, 0.3 skips 2 |
+
+Measured at 512² / 8 steps on a 4-bit snapshot:
+
+| ratio | skipped | time | mean pixel difference vs no cache |
+|---|---|---|---|
+| 0 | — | 30.2 s | — |
+| 0.15 | 1/8 | 24.6 s | 7.2 |
+| 0.30 | 2/8 | 21.1 s | 11.6 |
+
+mflux disables its cache below 10 steps; the driver lowers that floor to 2 because Z-Image-Turbo
+lives at 8–9 steps, and it never skips the first step. The sampler prints how many steps were skipped
+when the run finishes.
+
+The ControlNet path does **not** use the cache (mflux's ControlNet pipeline has no cache hook), so the
+node is a passthrough there and the sampler says so in the console.
+
 ### Image-to-image
 
 Connect an `IMAGE` and the sampler switches to encode → denoise → decode. The output size follows the

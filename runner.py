@@ -173,7 +173,29 @@ def build_command(
     cache_limit_gb: int = 0,
     image_path: Path | None = None,
     image_strength: float = 0.4,
+    step_cache_ratio: float = 0.0,
 ) -> list[str]:
+    if step_cache_ratio and step_cache_ratio > 0:
+        # mflux's CLI exposes no step-cache flag; our driver injects StepCache
+        # into the stock loop (see scripts/zimage_turbo_run.py).
+        script = Path(__file__).resolve().parent / "scripts" / "zimage_turbo_run.py"
+        cmd = [
+            python, str(script),
+            "--model", model,
+            "--prompt", prompt,
+            "--width", str(width),
+            "--height", str(height),
+            "--steps", str(steps),
+            "--seed", str(seed),
+            "--step-cache-ratio", f"{float(step_cache_ratio):.3f}",
+            "--output", str(out_path),
+        ]
+        if quantize and quantize != "bf16":
+            cmd += ["--quantize", quantize]
+        if image_path is not None:
+            cmd += ["--image", str(image_path), str(float(image_strength))]
+        return cmd
+
     cmd = [
         python, "-m", MODULE,
         "--model", model,
@@ -380,6 +402,7 @@ def run_generate(
     cache_limit_gb: int = 0,
     image_path: Path | None = None,
     image_strength: float = 0.4,
+    step_cache_ratio: float = 0.0,
     on_progress: Callable[[int, int], None] | None = None,
     on_log: Callable[[str], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
@@ -403,6 +426,7 @@ def run_generate(
         cache_limit_gb=cache_limit_gb,
         image_path=image_path,
         image_strength=image_strength,
+        step_cache_ratio=step_cache_ratio,
     )
 
     env = os.environ.copy()

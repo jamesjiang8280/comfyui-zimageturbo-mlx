@@ -1,6 +1,6 @@
 {
-  "last_node_id": 5,
-  "last_link_id": 2,
+  "last_node_id": 6,
+  "last_link_id": 4,
   "nodes": [
     {
       "id": 1,
@@ -22,7 +22,7 @@
           "name": "zimage_mlx_model",
           "type": "ZIMAGE_MLX_CONFIG",
           "links": [
-            1
+            3
           ]
         }
       ],
@@ -77,10 +77,48 @@
       "title": "底图（尺寸即输出尺寸）"
     },
     {
+      "id": 6,
+      "type": "ZImage MLX EasyCache",
+      "pos": [
+        500,
+        100
+      ],
+      "size": [
+        300,
+        130
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "zimage_mlx_model",
+          "type": "ZIMAGE_MLX_CONFIG",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "zimage_mlx_model",
+          "type": "ZIMAGE_MLX_CONFIG",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ZImage MLX EasyCache"
+      },
+      "widgets_values": [
+        true,
+        0.15
+      ]
+    },
+    {
       "id": 3,
       "type": "ZImage MLX Sampler",
       "pos": [
-        500,
+        840,
         100
       ],
       "size": [
@@ -179,7 +217,7 @@
   "links": [
     [
       1,
-      1,
+      6,
       0,
       3,
       0,
@@ -200,6 +238,14 @@
       4,
       0,
       "IMAGE"
+    ],
+    [
+      3,
+      1,
+      0,
+      6,
+      0,
+      "ZIMAGE_MLX_CONFIG"
     ]
   ],
   "groups": [],
