@@ -52,13 +52,25 @@ def _render_bar(step: int, total: int, rate: str, elapsed: float) -> str:
     return line
 
 
+def _stdout_is_tty() -> bool:
+    """ComfyUI swaps sys.stdout for its own _LogWriter, which has no isatty()."""
+    try:
+        probe = getattr(sys.stdout, "isatty", None)
+        return bool(probe()) if callable(probe) else False
+    except Exception:
+        return False
+
+
 def _emit_bar(line: str, final: bool = False) -> None:
     """Rewrite one console line when attached to a tty, otherwise append lines."""
-    if sys.stdout.isatty():
-        sys.stdout.write("\r" + line + ("\n" if final else ""))
-        sys.stdout.flush()
-    else:
-        print(line, flush=True)
+    if _stdout_is_tty():
+        try:
+            sys.stdout.write("\r" + line + ("\n" if final else ""))
+            sys.stdout.flush()
+            return
+        except Exception:
+            pass          # fall through to plain print
+    print(line, flush=True)
 
 
 class ZImageRunError(RuntimeError):
@@ -241,9 +253,12 @@ def stream_process(
         raise ZImageRunError(
             f"{label} 正常退出但没有产出图片。最近输出：\n" + "\n".join(tail[-15:])
         )
-    if sys.stdout.isatty() and last_step > 0:
-        sys.stdout.write("\n")   # 进度条是行内刷新的，收尾补换行
-        sys.stdout.flush()
+    if last_step > 0 and _stdout_is_tty():
+        try:
+            sys.stdout.write("\n")   # 进度条是行内刷新的，收尾补换行
+            sys.stdout.flush()
+        except Exception:
+            pass
     print(f"[zimage-mlx] 完成，用时 {time.time() - started:.1f}s"
           + (f" -> {out_path.name}" if out_path else ""), flush=True)
 
