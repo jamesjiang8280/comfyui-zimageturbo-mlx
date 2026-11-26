@@ -224,8 +224,10 @@ def model_options() -> list[str]:
         for f in sorted(base.glob("*.safetensors"), key=lambda x: x.name.lower()):
             if _single_file_is_zimage(f):
                 opts.append(str(f))
-    opts.append(DEFAULT_REPO)          # always allow "download from HF"
-    return opts
+    # The HF repo id is intentionally NOT listed (local snapshots are preferred and
+    # an accidental pick would pull 33 GB). It only shows up when nothing local
+    # exists at all, so a fresh install still has something selectable.
+    return opts or [DEFAULT_REPO]
 
 
 def default_model_value() -> str:
