@@ -76,7 +76,32 @@ python -m huggingface_hub.commands.huggingface_cli download Tongyi-MAI/Z-Image-T
     --include "transformer/*" "text_encoder/*" "vae/*" "tokenizer/*" "scheduler/*" "model_index.json"
 ```
 
-**B2. Fetch only the shared base assets (~8.2 GB)**
+**B2. Fetch the shared base assets (~8.2 GB, or ~20 GB with the DiT)**
+
+A single-file finetune is only the DiT; converting it needs the Qwen3-4B encoder, the FLUX AE and the
+tokenizer as a `--base`. If you do not have a snapshot yet:
+
+```bash
+python3 scripts/fetch_base_assets.py                    # shared components only (~8.2 GB, --base use)
+python3 scripts/fetch_base_assets.py --with-transformer  # + the 12.3 GB bf16 DiT -> runnable model
+```
+
+The DiT comes from `mlx-community/Z-Image-Turbo-bf16` (half the bytes of the fp32 original); the rest
+from `Tongyi-MAI/Z-Image-Turbo`, through hf-mirror with ranged resume (huggingface_hub stalls / 401s
+on Xet for this repo).
+
+> A directory holding only the shared components is **not** a runnable model — `transformer/` needs
+> `*.safetensors` or mflux fails with `No safetensors files found`. The Loader now rejects such a
+> snapshot up front and prints the command above.
+
+On a 24 GB machine, quantize the bf16 snapshot once so loads don't thrash:
+
+```bash
+mflux-save --model ~/ComfyUI-Shared/models/MLX/Z-Image-Turbo \
+           --path  ~/ComfyUI-Shared/models/MLX/Z-Image-Turbo-q4 --quantize 4
+```
+
+**B1. Fetch only the shared base assets (~8.2 GB)**
 
 A single-file finetune is only the DiT; converting it needs the Qwen3-4B encoder, the FLUX AE and the
 tokenizer as a `--base`. If you do not have a snapshot yet:
