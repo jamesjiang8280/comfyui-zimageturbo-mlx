@@ -146,6 +146,46 @@ def default_model_dir() -> Path:
     return mlx_root() / "Z-Image-Turbo"
 
 
+def lora_root() -> Path:
+    """Where Z-Image LoRAs live (ComfyUI's loras/z-image, or ZIMAGE_MLX_LORAS_DIR)."""
+    env = os.environ.get("ZIMAGE_MLX_LORAS_DIR", "").strip()
+    if env:
+        return Path(os.path.expanduser(env))
+    try:
+        import folder_paths  # ComfyUI runtime
+
+        for base in folder_paths.get_folder_paths("loras"):
+            cand = Path(base) / "z-image"
+            if cand.is_dir():
+                return cand
+        return Path(folder_paths.get_folder_paths("loras")[0]) / "z-image"
+    except Exception:
+        return Path.home() / "ComfyUI-Shared" / "models" / "loras" / "z-image"
+
+
+def lora_options() -> list[str]:
+    """Relative paths of every LoRA under lora_root(), sorted."""
+    root = lora_root()
+    if not root.is_dir():
+        return []
+    out: list[str] = []
+    for f in sorted(root.rglob("*")):
+        if f.is_file() and f.suffix.lower() in (".safetensors", ".sft"):
+            out.append(str(f.relative_to(root)))
+    return out
+
+
+def resolve_lora(name: str) -> Path:
+    root = lora_root()
+    path = (root / name).expanduser()
+    if not path.is_file():
+        raise ZImageRunError(
+            f"找不到 LoRA：{path}\n"
+            f"把 .safetensors 放进 {root}（或设置 ZIMAGE_MLX_LORAS_DIR），再刷新节点列表。"
+        )
+    return path
+
+
 def _has_transformer_weights(path: Path) -> bool:
     """True only when the dir actually carries DiT safetensors (not just config.json)."""
     tdir = path / "transformer"
@@ -697,6 +737,8 @@ class ZImageMlxSampler:
                     image_strength=float(image_strength),
                     step_cache_ratio=float(zimage_mlx_model.get("step_cache_threshold") or 0.0)
                     if zimage_mlx_model.get("step_cache") else 0.0,
+                    lora_paths=list(zimage_mlx_model.get("lora_paths") or []) or None,
+                    lora_scales=list(zimage_mlx_model.get("lora_scales") or []) or None,
                     on_progress=on_progress,
                     on_log=on_log,
                     should_cancel=should_cancel,
@@ -810,6 +852,68 @@ class ZImageMlxControlNet:
         )
 
 
+class ZImageMlxLoraLoader:
+    """Apply a Z-Image LoRA to the model config (chainable).
+
+    mflux loads LoRA deltas at model build time (`--lora PATH SCALE`), so this node
+    only records them in the config; the sampler passes them to the driver.
+    """
+
+    CATEGORY = "ZImage MLX"
+
+    @classmethod
+    def INPUT_TYPES(cls) -> dict[str, Any]:
+        choices = ["none"] + lora_options()
+        return {
+            "required": {
+                "zimage_mlx_model": ("ZIMAGE_MLX_CONFIG",),
+                "lora": (
+                    choices,
+                    {"default": "none", "tooltip": "loras/z-image 下的 .safetensors；多选请串联多个节点"},
+                ),
+                "strength": (
+                    "FLOAT",
+                    {"default": 1.0, "min": -4.0, "max": 4.0, "step": 0.05,
+                     "tooltip": "1.0 = 原强度；0.6~0.8 更温和，负值反向"},
+                ),
+                "enabled": (
+                    "BOOLEAN",
+                    {"default": True, "tooltip": "关闭=直通，便于 A/B"},
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("ZIMAGE_MLX_CONFIG",)
+    RETURN_NAMES = ("zimage_mlx_model",)
+    FUNCTION = "apply"
+
+    def apply(
+        self,
+        zimage_mlx_model: dict[str, Any],
+        lora: str = "none",
+        strength: float = 1.0,
+        enabled: bool = True,
+    ) -> tuple[dict[str, Any]]:
+        cfg = dict(zimage_mlx_model or {})
+        if not enabled or not lora or lora == "none":
+            if enabled:
+                _say("[ZImage-MLX] LoRA: none（未选择，直通）")
+            else:
+                _say("[ZImage-MLX] LoRA: 已禁用，直通上游配置")
+            return (cfg,)
+
+        path = resolve_lora(lora)
+        paths = list(cfg.get("lora_paths") or [])
+        scales = list(cfg.get("lora_scales") or [])
+        paths.append(str(path))
+        scales.append(float(strength))
+        cfg["lora_paths"] = paths
+        cfg["lora_scales"] = scales
+        _say(f"[ZImage-MLX] LoRA: {lora} @ {float(strength):.2f}"
+             f"（共 {len(paths)} 个）")
+        return (cfg,)
+
+
 class ZImageMlxEasyCache:
     """Enable mflux's StepCache for Z-Image-Turbo MLX (config in, config out).
 
@@ -870,6 +974,7 @@ NODE_CLASS_MAPPINGS = {
     "ZImage MLX Sampler": ZImageMlxSampler,
     "ZImage MLX ControlNet": ZImageMlxControlNet,
     "ZImage MLX EasyCache": ZImageMlxEasyCache,
+    "ZImage MLX LoRA": ZImageMlxLoraLoader,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -877,6 +982,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ZImage MLX Sampler": "Z-Image-Turbo MLX 采样器",
     "ZImage MLX ControlNet": "Z-Image-Turbo MLX ControlNet",
     "ZImage MLX EasyCache": "Z-Image-Turbo MLX EasyCache",
+    "ZImage MLX LoRA": "Z-Image-Turbo MLX LoRA",
 }
 
 _say(f"[ZImage-MLX] nodes v{VERSION} loaded")

@@ -107,8 +107,18 @@ def main() -> int:
                     help="fraction of denoise steps to reuse (0 = off, 0.2-0.4 typical)")
     ap.add_argument("--step-cache-protect", type=int, default=1,
                     help="never skip the first N steps (composition is decided there)")
+    ap.add_argument("--lora", action="append", nargs="+", default=None,
+                    metavar=("PATH", "SCALE"), help="repeatable: --lora path 0.7")
     ap.add_argument("--output", required=True)
     args = ap.parse_args()
+
+    lora_paths: list[str] = []
+    lora_scales: list[float] = []
+    for group in args.lora or []:
+        lora_paths.append(group[0])
+        lora_scales.append(float(group[1]) if len(group) > 1 else 1.0)
+    if lora_paths:
+        print(f"[run] loras: {list(zip(lora_paths, lora_scales))}", flush=True)
 
     model_dir = Path(args.model).expanduser()
     if not model_dir.is_dir():
@@ -133,7 +143,13 @@ def main() -> int:
     print(f"[run] model={model_dir.name} steps={args.steps} size={args.width}x{args.height} "
           f"quantize={args.quantize} step_cache={ratio or 'off'}", flush=True)
 
-    model = ZImage(model_config=cfg, model_path=str(model_dir), quantize=args.quantize)
+    model = ZImage(
+        model_config=cfg,
+        model_path=str(model_dir),
+        quantize=args.quantize,
+        lora_paths=lora_paths or None,
+        lora_scales=lora_scales or None,
+    )
 
     image = model.generate_image(
         seed=args.seed,

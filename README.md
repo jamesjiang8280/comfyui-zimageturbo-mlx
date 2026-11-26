@@ -229,6 +229,28 @@ sampler serves both workflows.
 | `image_strength` | 0.6 | only used with `image`: how far to repaint (mflux default 0.4) |
 | `control` (optional) | — | output of `ZImage MLX ControlNet` |
 
+### LoRA
+
+`Z-Image-Turbo MLX LoRA` applies a Z-Image LoRA to the model config; chain several nodes to stack them.
+
+```
+ZImage MLX Loader ─▶ ZImage MLX LoRA ─▶ (LoRA …) ─▶ ZImage MLX Sampler
+```
+
+| input | default | notes |
+|---|---|---|
+| `zimage_mlx_model` | — | from the Loader (or another LoRA node) |
+| `lora` | none | every `.safetensors`/`.sft` under `models/loras/z-image`, scanned recursively |
+| `strength` | 1.0 | −4…4; 0.6–0.8 is gentler, negative inverts |
+| `enabled` | true | off = passthrough for A/B |
+
+The list comes from ComfyUI's `folder_paths` when available, so `extra_model_paths.yaml` and
+`ZIMAGE_MLX_LORAS_DIR` both work. mflux merges the deltas at model build time, so the sampler passes
+them to the driver as repeated `--lora PATH SCALE` (the LoRA is baked into the weights by default).
+
+First run with a LoRA costs a few extra seconds (load + merge); measured 20 MB LoRA at 512²/4 steps:
+8.8 s without, 16.8 s with (that includes the merge, not just sampling).
+
 ### EasyCache (step reuse)
 
 `Z-Image-Turbo MLX EasyCache` sits between the Loader and the Sampler and turns on mflux's

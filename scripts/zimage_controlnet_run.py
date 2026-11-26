@@ -46,8 +46,18 @@ def main() -> int:
     ap.add_argument("--scheduler", default="linear")
     ap.add_argument("--preprocessed", action="store_true",
                     help="control image already went through _preprocess(); don't redo it")
+    ap.add_argument("--lora", action="append", nargs="+", default=None,
+                    metavar=("PATH", "SCALE"), help="repeatable: --lora path 0.7")
     ap.add_argument("--output", required=True)
     args = ap.parse_args()
+
+    lora_paths: list[str] = []
+    lora_scales: list[float] = []
+    for group in args.lora or []:
+        lora_paths.append(group[0])
+        lora_scales.append(float(group[1]) if len(group) > 1 else 1.0)
+    if lora_paths:
+        print(f"[run] loras: {list(zip(lora_paths, lora_scales))}", flush=True)
 
     model_dir = Path(args.model).expanduser()
     control_img = Path(args.control_image).expanduser()
@@ -76,7 +86,12 @@ def main() -> int:
     print(f"[cn] base={model_dir}  controlnet={cfg.controlnet_model}  "
           f"type={args.control_type} strength={args.control_strength}", flush=True)
 
-    model = ZImageTurboControlnet(model_config=cfg, model_path=str(model_dir))
+    model = ZImageTurboControlnet(
+        model_config=cfg,
+        model_path=str(model_dir),
+        lora_paths=lora_paths or None,
+        lora_scales=lora_scales or None,
+    )
 
     spec = ControlSpec(
         type=ControlType(args.control_type),

@@ -168,7 +168,13 @@ def build_command(
     image_path: Path | None = None,
     image_strength: float = 0.4,
     step_cache_ratio: float = 0.0,
+    lora_paths: list[str] | None = None,
+    lora_scales: list[float] | None = None,
 ) -> list[str]:
+    lora_args: list[str] = []
+    for path, scale in zip(lora_paths or [], lora_scales or []):
+        lora_args += ["--lora", str(path), f"{float(scale):.3f}"]
+
     if step_cache_ratio and step_cache_ratio > 0:
         # mflux's CLI exposes no step-cache flag; our driver injects StepCache
         # into the stock loop (see scripts/zimage_turbo_run.py).
@@ -188,6 +194,7 @@ def build_command(
             cmd += ["--quantize", quantize]
         if image_path is not None:
             cmd += ["--image", str(image_path), str(float(image_strength))]
+        cmd += lora_args
         return cmd
 
     cmd = [
@@ -208,6 +215,7 @@ def build_command(
         cmd += ["--mlx-cache-limit-gb", str(cache_limit_gb)]
     if image_path is not None:
         cmd += ["--image", str(image_path), str(float(image_strength))]
+    cmd += lora_args
     return cmd
 
 
@@ -386,6 +394,8 @@ def run_generate(
     image_path: Path | None = None,
     image_strength: float = 0.4,
     step_cache_ratio: float = 0.0,
+    lora_paths: list[str] | None = None,
+    lora_scales: list[float] | None = None,
     on_progress: Callable[[int, int], None] | None = None,
     on_log: Callable[[str], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
@@ -410,6 +420,8 @@ def run_generate(
         image_path=image_path,
         image_strength=image_strength,
         step_cache_ratio=step_cache_ratio,
+        lora_paths=lora_paths,
+        lora_scales=lora_scales,
     )
 
     env = os.environ.copy()
